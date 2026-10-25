@@ -31,14 +31,14 @@
       "fallback_enabled": {
         "description": "本机渲染不可用时透传上游公共端点",
         "type": "bool",
-        "hint": "例如 Chromium 还没装好时，请求会自动转发到 fallback_endpoint，保证聊天的文转图不中断。",
+        "hint": "例如 Chromium 还没装好时，请求会自动转发到备用端点，图片会先下载到本地再返回，保证聊天的文转图不中断。",
         "default": true
       },
       "fallback_endpoint": {
         "description": "透传的备用端点",
         "type": "string",
-        "hint": "需包含 /text2img，例如 https://t2i.soulter.top/text2img。",
-        "default": "https://t2i.soulter.top/text2img"
+        "hint": "需包含 /text2img，例如 https://t2i.rcfortress.site/text2img；自建服务填自己的地址（如 http://127.0.0.1:8999/text2img）。",
+        "default": "https://t2i.rcfortress.site/text2img"
       }
     }
   },
@@ -118,10 +118,26 @@
         "default": ""
       },
       "auto_install_deps": {
-        "description": "安装浏览器时同时安装系统依赖",
+        "description": "检测到 Chromium 缺少系统运行库时自动补装",
         "type": "bool",
-        "hint": "需要 root/apt 权限。AstrBot 官方镜像通常已具备依赖，默认关闭。",
-        "default": false
+        "hint": "缺系统库自动补装（需 root 与 apt-get/dnf）。浏览器装好了却一渲染就崩时，插件会自动补装依赖；环境不支持时只提示，不报错。",
+        "default": true
+      },
+      "download_chromium": {
+        "description": "下载 Chromium 浏览器（保存配置即开始）",
+        "type": "bool",
+        "hint": "打开本开关并保存配置就会在后台下载并安装 Chromium，无需发送指令；下载结束后本开关会自动关闭。进度见插件页或 /t2i_status。",
+        "default": false,
+        "condition": {
+          "chromium_ready": false
+        }
+      },
+      "chromium_ready": {
+        "description": "Chromium 是否已就绪（插件自动维护）",
+        "type": "bool",
+        "hint": "插件根据本地浏览器状态自动写入，无需手动修改。",
+        "default": false,
+        "invisible": true
       },
       "cleanup_orphans": {
         "description": "插件启动时清理残留 Chromium",

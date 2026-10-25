@@ -159,6 +159,15 @@
           ["累计请求", `${server.requests ?? 0} 次（透传 ${server.fallback_used ?? 0} 次）`],
           ["Python playwright", browser.pip_playwright ? "已安装" : "未安装", !!browser.pip_playwright],
           ["Chromium", browser.installed ? "已安装" : "未安装", !!browser.installed],
+          [
+            "系统依赖",
+            !browser.installed
+              ? "装好 Chromium 后检查"
+              : (browser.missing_libs || []).length
+                ? `缺少 ${browser.missing_libs.join("、")}`
+                : "齐全",
+            browser.installed ? !(browser.missing_libs || []).length : undefined,
+          ],
           ["浏览器进程", `${browser.processes ?? 0} 个 · ${browser.process_memory_mb ?? 0} MB`],
           ["浏览器连接", renderer.connected ? "已连接" : "空闲 / 未启动", !!renderer.connected],
           ["AstrBot 端点", endpoint.astrbot_t2i_endpoint || "（未设置）"],
@@ -170,13 +179,19 @@
         const status = state.status || "idle";
         $("install-status").textContent = `${status} · ${state.message || ""}`;
         $("install-elapsed").textContent = `${state.elapsed ?? 0}s`;
-        $("install-meta").textContent = state.installed ? "Chromium 已就绪" : "Chromium 未就绪";
+        const missing = state.missing_libs || [];
+        $("install-meta").textContent = !state.installed
+          ? "Chromium 未就绪"
+          : missing.length
+            ? `Chromium 缺系统库（${missing.join("、")}）`
+            : "Chromium 已就绪";
         const lines = state.log_tail || [];
         $("install-log").textContent = lines.length ? lines[lines.length - 1] : "（暂无日志）";
-        const progress = status === "running" ? 55 : status === "done" || state.installed ? 100 : status === "failed" ? 100 : 0;
+        const ready = state.installed && !missing.length;
+        const progress = status === "running" ? 55 : status === "done" || ready ? 100 : status === "failed" ? 100 : 0;
         const bar = $("install-bar");
         bar.style.width = progress + "%";
-        bar.style.background = status === "failed" ? "var(--bad)" : status === "done" || state.installed ? "var(--ok)" : "var(--accent)";
+        bar.style.background = status === "failed" ? "var(--bad)" : status === "done" || ready ? "var(--ok)" : "var(--accent)";
       }
 
       async function tick() {

@@ -19,6 +19,7 @@ import pytest
 
 import main as plugin_main
 from t2i_plugin.card import build_status_card, build_test_card
+from t2i_plugin.config import DEFAULT_FALLBACK_ENDPOINT
 
 
 def free_port() -> int:
@@ -153,3 +154,178 @@ async def test_status_text_is_human_readable(plugin):
     text = instance._status_text()
     assert "文转图" in text or "t2i" in text.lower()
     assert str(port) in text
+
+
+# ------------------------------------------------ 配置页「下载 Chromium」开关
+
+
+class RecordingConfig(dict):
+    """模拟 AstrBot 下发的插件配置对象（dict + save_config_async）。"""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.saves = 0
+
+    async def save_config_async(self, replace_config=None, *, indent: int = 2) -> bool:
+        self.saves += 1
+        return True
+
+
+class FakeInstallState:
+    def __init__(self, status: str = "idle", message: str = "") -> None:
+        self.status = status
+        self.message = message
+
+    @property
+    def running(self) -> bool:
+        return self.status == "running"
+
+
+class FakeManager:
+    """只实现开关处理用到的浏览器管理接口。"""
+
+    def __init__(self, *, installed: bool, install_status: str = "done") -> None:
+        self._installed = installed
+        self.install_status = install_status
+        self.install_state = FakeInstallState()
+        self.install_calls: list[bool] = []
+
+    def is_installed(self) -> bool:
+        return self._installed
+
+    def start_install(self, install_deps: bool = False) -> bool:
+        self.install_calls.append(install_deps)
+        self.install_state = FakeInstallState(
+            status=self.install_status, message="安装完成" if self.install_status == "done" else "下载失败"
+        )
+        if self.install_status == "done":
+            self._installed = True
+        return True
+
+    def download_host_effective(self) -> str:
+        return "https://mirror.example"
+
+    def find_chromium(self) -> str:
+        return "/fake/chromium"
+
+
+async def test_download_switch_starts_install_and_closes_itself(plugin):
+    """配置页保存开关 → 后台开始下载；结束后开关自动收回，就绪状态写回。"""
+    raw = RecordingConfig(
+        {
+            "server": {"enabled": False, "port": free_port()},
+            "render": {"prelaunch": False},
+            "browser": {"cleanup_orphans": False, "download_chromium": True},
+        }
+    )
+    instance = plugin(raw)
+    manager = FakeManager(installed=False)
+    instance.browser_manager = manager
+
+    await instance._handle_download_switch()
+
+    assert manager.install_calls == [instance.settings.browser.auto_install_deps]
+    assert raw["browser"]["download_chromium"] is False
+    assert raw["browser"]["chromium_ready"] is True
+    assert raw.saves >= 1
+
+
+async def test_download_switch_is_ignored_when_chromium_ready(plugin):
+    """本机已有浏览器时不下第二次，开关只被收回。"""
+    raw = RecordingConfig(
+        {
+            "server": {"enabled": False, "port": free_port()},
+            "render": {"prelaunch": False},
+            "browser": {"cleanup_orphans": False, "download_chromium": True},
+        }
+    )
+    instance = plugin(raw)
+    manager = FakeManager(installed=True)
+    instance.browser_manager = manager
+
+    await instance._handle_download_switch()
+
+    assert manager.install_calls == []
+    assert raw["browser"]["download_chromium"] is False
+    assert raw["browser"]["chromium_ready"] is True
+
+
+async def test_download_switch_reports_failure_by_closing_switch(plugin):
+    """下载失败同样收回开关，避免下次重载反复重试。"""
+    raw = RecordingConfig(
+        {
+            "server": {"enabled": False, "port": free_port()},
+            "render": {"prelaunch": False},
+            "browser": {"cleanup_orphans": False, "download_chromium": True},
+        }
+    )
+    instance = plugin(raw)
+    manager = FakeManager(installed=False, install_status="failed")
+    instance.browser_manager = manager
+
+    await instance._handle_download_switch()
+
+    assert manager.install_calls != []
+    assert raw["browser"]["download_chromium"] is False
+    assert raw["browser"]["chromium_ready"] is False
+
+
+async def test_download_switch_closed_state_does_not_start_install(plugin):
+    """开关是关的（默认）时只在状态变化时回写，不触发下载。"""
+    raw = RecordingConfig(
+        {
+            "server": {"enabled": False, "port": free_port()},
+            "render": {"prelaunch": False},
+            "browser": {"cleanup_orphans": False},
+        }
+    )
+    instance = plugin(raw)
+    manager = FakeManager(installed=False)
+    instance.browser_manager = manager
+
+    await instance._handle_download_switch()
+    assert manager.install_calls == []
+    assert "download_chromium" not in raw["browser"]
+    assert raw["browser"]["chromium_ready"] is False
+
+
+async def test_legacy_fallback_endpoint_is_migrated(plugin):
+    """老配置里留着已停用的备用端点时自动换成当前默认值。"""
+    raw = RecordingConfig(
+        {
+            "server": {
+                "enabled": False,
+                "port": free_port(),
+                "fallback_endpoint": "https://t2i.soulter.top/text2img",
+            },
+            "render": {"prelaunch": False},
+            "browser": {"cleanup_orphans": False},
+        }
+    )
+    instance = plugin(raw)
+
+    await instance._migrate_legacy_fallback_endpoint()
+
+    assert raw["server"]["fallback_endpoint"] == DEFAULT_FALLBACK_ENDPOINT
+    assert instance.settings.server.fallback_endpoint == DEFAULT_FALLBACK_ENDPOINT
+
+
+async def test_custom_fallback_endpoint_is_kept(plugin):
+    """用户自己填的备用端点不被动到。"""
+    raw = RecordingConfig(
+        {
+            "server": {
+                "enabled": False,
+                "port": free_port(),
+                "fallback_endpoint": "http://10.0.0.5:8999/text2img",
+            },
+            "render": {"prelaunch": False},
+            "browser": {"cleanup_orphans": False},
+        }
+    )
+    instance = plugin(raw)
+
+    await instance._migrate_legacy_fallback_endpoint()
+
+    assert raw["server"]["fallback_endpoint"] == "http://10.0.0.5:8999/text2img"
+    assert instance.settings.server.fallback_endpoint == "http://10.0.0.5:8999/text2img"

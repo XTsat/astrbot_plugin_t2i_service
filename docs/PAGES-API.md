@@ -316,7 +316,7 @@ resolve(response.data?.data ?? response.data);               // :384-387 自动�
 | `core_config["t2i_endpoint"]=...; core_config.save_config()`（`main.py:180-183,481-485`） | ✅ 语义正确（`AstrBotConfig` 是 dict 子类，`save_config()` 同步落盘，`astrbot/core/config/astrbot_config.py:282-292`）。⚠️ 建议：这里在 **async** handler / 协程里调用同步落盘会阻塞事件循环，改用 `await core_config.save_config_async()`（同文件 `:294-310`，内部 `asyncio.to_thread`）。另外 AstrBot 主进程缓存了策略，改了 `t2i_strategy` 后需重启才生效——插件自己的 note 已正确说明 |
 | `web_render_test` 失败时返回 `json_response({"status":"error", ...})`（`main.py:462-464`） | ⚠️ 能让桥 reject（消息取 `message`），但 HTTP 仍是 200。语义上更推荐 `error_response(detail, status_code=500/503)`，与文件里其他分支一致 |
 | `_web_apis_registered` 哨兵 + reload | ✅ 见 §6 |
-| 页面骨架调用的返回结构 | ✅ 已按桥的拆包规则实现：`apiGet("status")` 直接得到 `_status_payload()`；`apiGet("install/state")` 得到 `install_state.as_dict() + installed`（`main.py:437-446`，status ∈ `idle/running/done/failed`，`t2i_plugin/browser.py:35-38`） |
+| 页面骨架调用的返回结构 | ✅ 已按桥的拆包规则实现：`apiGet("status")` 直接得到 `_status_payload()`（含 `browser.missing_libs` / `deps_ready` / `deps` 三个系统依赖字段）；`apiGet("install/state")` 得到 `install_state.as_dict() + installed + missing_libs + deps`（status ∈ `idle/running/done/failed`，`t2i_plugin/browser.py`）。`apiPost("install")` 会按需切换模式：返回 `data.mode = install`（下载浏览器）或 `deps`（只补装系统运行库，附 `missing_libs`） |
 | `status-card`（`main.py:529-538`） | ⚠️ **不是** `image/png` 字节流：route 描述写的是"状态卡片图片"，但实现返回 `json_response({"status":"ok","data":{"image":"data:image/png;base64,..."}})`。所以页面要 `const {image} = await bridge.apiGet("status-card")` 再塞给 `<img src>`；失败时是 `error_response(..., status_code=503)` |
 
 ---

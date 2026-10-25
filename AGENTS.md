@@ -246,6 +246,7 @@ class T2IServicePlugin(Star):
 - **唯一入口**是 `T2IConfig.from_raw(dict(self._raw_config))`，产出嵌套 dataclass（`ServerConfig` / `RenderConfig` / `BrowserConfig` / `EndpointConfig` / `StorageConfig`）。业务代码读 `self.settings.render.concurrency`，**不要**到处 `self.config.get(...)`。
 - `_conf_schema.json` 是默认值的对外契约，`T2IConfig` 的默认值必须与它一致——`tests/test_plugin_config.py` 会守住这条。
 - 插件配置只读：`main.py` 把 AstrBot 下发的配置字典交给 `T2IConfig.from_raw`，自身不再散读；插件不写回自己的配置（`_conf_schema.json` 的默认值即最终默认值）。
+- **唯一例外（`browser.download_chromium` / `browser.chromium_ready`）**：AstrBot 配置页只有开关 + 保存、没有按钮控件，所以「一键下载 Chromium」做成一次性开关——`main.py` 的 `_update_plugin_config` 把它收回，并回写浏览器就绪状态供 `condition` 隐藏开关。除这两项外不要再新增回写。
 
 ### 5.3 数据文件
 

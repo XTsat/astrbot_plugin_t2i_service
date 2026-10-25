@@ -7,17 +7,20 @@
 * ``GET  /text2img/data/{id}`` → 图片
 * ``GET  /healthz`` → 健康检查（无鉴权，供自检脚本使用）
 
-当本机 Chromium 不可用或渲染失败时，可以选择把请求透传给上游公共端点，
-保证插件装上了就能用。
+当本机 Chromium 不可用或渲染失败时，可以选择把请求透传给上游公共端点：
+图片会先下载到本插件的数据目录，再把本地 id 回给调用方，保证「装上就能用」
+且不依赖上游的临时文件还能活多久。
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import secrets
 import time
+from pathlib import Path
 
-from aiohttp import ClientSession, ClientTimeout, web
+from aiohttp import ClientError, ClientSession, ClientTimeout, web
 from jinja2.exceptions import SecurityError
 from loguru import logger
 from pydantic import ValidationError
@@ -30,9 +33,41 @@ from t2i_core.metrics import (
 )
 from t2i_core.render import PlaywrightNotInstalledError, ScreenshotOptions, Text2ImgRender
 from t2i_core.storage import LocalImageStorage
+from t2i_core.util import generate_data_path
 
-from .browser import BrowserManager, playwright_pip_available
+from .browser import BrowserManager, explain_launch_error, playwright_pip_available
 from .config import T2IConfig
+
+
+class FallbackError(Exception):
+    """备用端点没能给出图片（网络异常 / 上游返回错误）。"""
+
+
+def _upstream_image_id(body: bytes) -> str:
+    """从上游 JSON 响应里取出 ``data.id``（有些实现会忽略 json=false）。"""
+    try:
+        payload = json.loads(body.decode("utf-8", "replace"))
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return ""
+    image_id = data.get("id")
+    return image_id if isinstance(image_id, str) else ""
+
+
+def _upstream_message(body: bytes, status: int) -> str:
+    """把上游失败响应压成一行可读文字。"""
+    try:
+        payload = json.loads(body.decode("utf-8", "replace"))
+    except json.JSONDecodeError:
+        text = body.decode("utf-8", "replace").strip()
+        return f"HTTP {status} {text[:120]}".strip()
+    if isinstance(payload, dict) and payload.get("message"):
+        return f"HTTP {status} {payload['message']}"
+    return f"HTTP {status}"
 
 
 def normalize_render_url(url: str) -> str:
@@ -150,24 +185,86 @@ class T2IHttpServer:
         return web.json_response(payload, status=status)
 
     async def _forward_to_fallback(self, payload: dict) -> web.Response:
-        """把请求透传给上游公共端点。"""
+        """把请求透传给备用端点，并把图片落到本地存储。
+
+        上游返回的 id 只在它自己的存储里有效，而 AstrBot 拿到 id 后会回本插件
+        取 ``/text2img/data/{id}``，所以必须向上游要图片字节、落盘后换成本地 id。
+        """
         url = normalize_render_url(self.config.server.fallback_endpoint)
         if not url:
             return self._error(503, "本地渲染不可用，且未配置备用端点")
         if self._session is None or self._session.closed:
             self._session = ClientSession(timeout=ClientTimeout(total=120))
+
+        want_json = bool(payload.get("json"))
+        # 无论调用方要不要图片字节，都向上游要图，避免拿到对岸的临时 id
         try:
-            async with self._session.post(f"{url}/generate", json=payload) as resp:
-                body = await resp.read()
-                content_type = resp.headers.get("Content-Type", "application/json")
-        except Exception as exc:  # 网络异常
-            self.last_error = f"备用端点转发失败：{exc}"
+            body, media_type = await self._fetch_fallback_image(
+                url, {**payload, "json": False}
+            )
+        except FallbackError as exc:
+            self.last_error = str(exc)
+            logger.warning(f"[t2i] {self.last_error}")
+            return self._error(503, self.last_error)
+
+        suffix = {"image/png": "png", "image/webp": "webp"}.get(media_type, "jpg")
+        path, _ = generate_data_path(
+            suffix=suffix, namespace="fallback", data_dir=self.data_dir
+        )
+        try:
+            await asyncio.to_thread(Path(path).write_bytes, body)
+            image_id = await self.storage.save(path)
+        except OSError as exc:
+            self.last_error = f"备用端点图片保存失败：{exc}"
             logger.warning(f"[t2i] {self.last_error}")
             return self._error(503, self.last_error)
 
         self.fallback_used += 1
-        logger.info(f"[t2i] 已转发到备用端点 {url}（HTTP {resp.status}）")
-        return web.Response(status=resp.status, body=body, content_type=content_type.split(";")[0])
+        logger.info(
+            f"[t2i] 备用端点渲染完成：{url} → {image_id}（{len(body)} 字节，{media_type}）"
+        )
+        if want_json:
+            return web.json_response(
+                {"code": 0, "message": "success", "data": {"id": f"data/{image_id}"}}
+            )
+        return web.FileResponse(path, headers={"Content-Type": media_type})
+
+    async def _fetch_fallback_image(
+        self, url: str, payload: dict
+    ) -> tuple[bytes, str]:
+        """向上游要一张图，返回 (图片字节, media type)。"""
+        session = self._session
+        if session is None:  # pragma: no cover - 调用方已保证
+            raise FallbackError("备用端点会话未就绪")
+        try:
+            async with session.post(f"{url}/generate", json=payload) as resp:
+                body = await resp.read()
+                status = resp.status
+                content_type = (resp.headers.get("Content-Type") or "").split(";")[0]
+                media_type = content_type.strip().lower()
+        except (ClientError, asyncio.TimeoutError, OSError) as exc:
+            raise FallbackError(f"备用端点转发失败：{exc}") from exc
+
+        if status < 400 and media_type.startswith("image/"):
+            return body, media_type
+
+        # 少数部署会忽略 json=false，仍然回 {"data": {"id": ...}}，按 id 再取一次
+        image_id = _upstream_image_id(body) if status < 400 else ""
+        if image_id:
+            try:
+                async with session.get(f"{url}/{image_id}") as resp:
+                    fetched = await resp.read()
+                    fetched_type = (resp.headers.get("Content-Type") or "").split(";")[0]
+                    fetch_status = resp.status
+            except (ClientError, asyncio.TimeoutError, OSError) as exc:
+                raise FallbackError(f"备用端点图片下载失败：{exc}") from exc
+            if fetch_status < 400 and fetched and fetched_type.strip().startswith("image/"):
+                return fetched, fetched_type.strip().lower()
+            raise FallbackError(
+                f"备用端点图片下载失败：{_upstream_message(fetched, fetch_status)}"
+            )
+
+        raise FallbackError(f"备用端点渲染失败：{_upstream_message(body, status)}")
 
     def _local_render_available(self) -> bool:
         if not playwright_pip_available():
@@ -287,7 +384,8 @@ class T2IHttpServer:
                 self.last_error = str(exc)
                 logger.warning(f"[t2i] {exc}")
             except Exception as exc:
-                self.last_error = f"本地渲染失败：{exc}"
+                # 缺系统库时原始报错是一整段浏览器启动日志，翻译成可执行提示
+                self.last_error = f"本地渲染失败：{explain_launch_error(str(exc))}"
                 logger.warning(f"[t2i] {self.last_error}", exc_info=True)
 
         # 2) 本地不可用 → 备用端点
@@ -319,7 +417,7 @@ class T2IHttpServer:
         except PlaywrightNotInstalledError as exc:
             return False, str(exc)
         except Exception as exc:  # noqa: BLE001 - 需要把原因回给用户
-            return False, f"渲染失败：{exc}"
+            return False, f"渲染失败：{explain_launch_error(str(exc))}"
 
     async def ensure_started(self) -> tuple[bool, str]:
         if self.running:

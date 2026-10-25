@@ -10,7 +10,7 @@ AstrBot 插件进程，用 aiohttp 暴露**完全一致**的 HTTP 契约，因�
 
 命令：
     /t2i_status   查看服务/浏览器/端点状态
-    /t2i_install  安装 Chromium（后台执行，带进度）
+    /t2i_install  安装 Chromium；已装但缺系统库时改为补装系统依赖
     /t2i_test     渲染一张测试卡片，验证链路是否打通
     /t2i_restart  重启内嵌 HTTP 服务并释放 Chromium
 
@@ -23,6 +23,7 @@ import asyncio
 import base64
 import sys
 import time
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 # 插件目录入 sys.path，保证 t2i_plugin / t2i_core 可导入（AstrBot 以包路径
@@ -31,8 +32,20 @@ _PLUGIN_DIR = Path(__file__).resolve().parent
 if str(_PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(_PLUGIN_DIR))
 
+# AstrBot 重载插件只清理 data.plugins.<plugin>.* 模块，而 t2i_plugin / t2i_core
+# 是按顶层包名导入的，会残留在 sys.modules 里：不先清掉，重载后依旧跑旧代码，
+# 新增符号缺失时甚至直接 ImportError 让插件加载失败。
+for _stale in [
+    name for name in sys.modules if name.split(".", 1)[0] in {"t2i_plugin", "t2i_core"}
+]:
+    del sys.modules[_stale]
+
 from astrbot.api import AstrBotConfig, logger  # noqa: E402
-from astrbot.api.event import AstrMessageEvent, filter  # noqa: E402
+from astrbot.api.event import (  # noqa: E402
+    AstrMessageEvent,
+    MessageEventResult,
+    filter,
+)
 from astrbot.api.star import Context, Star  # noqa: E402
 from astrbot.api.web import error_response, json_response  # noqa: E402
 from astrbot.core.utils.astrbot_path import (  # noqa: E402
@@ -41,10 +54,21 @@ from astrbot.core.utils.astrbot_path import (  # noqa: E402
 
 from t2i_core.render import Text2ImgRender  # noqa: E402
 from t2i_core.util import cleanup_expired_files  # noqa: E402
-from t2i_plugin.browser import BrowserManager, playwright_pip_available  # noqa: E402
+from t2i_plugin.browser import (  # noqa: E402
+    DONE,
+    BrowserManager,
+    deps_install_available,
+    playwright_pip_available,
+)
 from t2i_plugin.card import build_status_card, build_test_card  # noqa: E402
-from t2i_plugin.config import T2IConfig  # noqa: E402
+from t2i_plugin.config import DEFAULT_FALLBACK_ENDPOINT, T2IConfig  # noqa: E402
 from t2i_plugin.server import T2IHttpServer  # noqa: E402
+
+# 历史上会写进用户配置的备用端点，官方已停用；值为空时视为「未自定义」
+LEGACY_FALLBACK_ENDPOINTS = {
+    "https://t2i.soulter.top/text2img",
+    "https://t2i.soulter.top",
+}
 
 PLUGIN_NAME = "astrbot_plugin_t2i_service"
 
@@ -63,7 +87,7 @@ class T2IServicePlugin(Star):
 
     命令：
       /t2i_status   查看服务 / 浏览器 / 端点状态
-      /t2i_install  安装 Chromium（后台执行，带进度）
+      /t2i_install  安装 Chromium；已装但缺系统库时改为补装系统依赖
       /t2i_test     渲染一张测试卡片，验证链路是否打通
       /t2i_restart  重启内嵌 HTTP 服务并释放 Chromium
 
@@ -129,6 +153,8 @@ class T2IServicePlugin(Star):
             except Exception as exc:  # pragma: no cover - 防御
                 logger.warning(f"[t2i] 清理残留 Chromium 失败：{exc}")
 
+        self._schedule_deps_install()
+
         if self.settings.server.enabled:
             ok, message = await self.server.start()
             if not ok:
@@ -140,6 +166,8 @@ class T2IServicePlugin(Star):
         else:
             logger.info("[t2i] 内嵌渲染服务未启用（server.enabled = false）")
 
+        await self._migrate_legacy_fallback_endpoint()
+        self._spawn(self._handle_download_switch())
         self._cleanup_task = asyncio.create_task(self._periodic_maintenance())
 
     async def terminate(self) -> None:
@@ -167,6 +195,156 @@ class T2IServicePlugin(Star):
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
         return task
+
+    def _schedule_deps_install(self) -> None:
+        """启动时若浏览器缺系统库且允许自动补装，就在后台补一次。
+
+        缺库的表现是「浏览器明明装好了，一渲染就崩」，用户通常猜不到是系统依赖
+        问题，所以一旦检测到缺库就顺手补上，而不是等渲染失败再排查。
+        """
+        if not self.settings.browser.auto_install_deps:
+            return
+        manager = self.browser_manager
+        missing = manager.missing_shared_libs()
+        if not missing:
+            return
+        if not deps_install_available():
+            logger.warning(
+                f"[t2i] Chromium 缺少系统库 {'、'.join(missing)}，"
+                "但当前环境无法自动补装（需要 root 与 apt-get/dnf）"
+            )
+            return
+        if manager.start_install_deps():
+            logger.warning(
+                f"[t2i] Chromium 缺少系统库 {'、'.join(missing)}，已在后台自动补装"
+            )
+
+    async def _migrate_legacy_fallback_endpoint(self) -> None:
+        """把老配置里写死的停用端点换成当前默认值。
+
+        旧默认端点已无可用后端，升级上来的用户配置里仍留着它，透传必然失败；
+        只有原值确实等于老默认值时才改，用户自己填的地址一律不动。
+        """
+        current = self._raw_config.get("server", {}) if isinstance(self._raw_config, dict) else {}
+        stored = current.get("fallback_endpoint") if isinstance(current, dict) else None
+        if not isinstance(stored, str) or stored.strip() not in LEGACY_FALLBACK_ENDPOINTS:
+            return
+        logger.info(
+            f"[t2i] 备用端点 {stored} 已停用，自动切换为 {DEFAULT_FALLBACK_ENDPOINT}"
+        )
+        self.settings.server.fallback_endpoint = DEFAULT_FALLBACK_ENDPOINT
+        await self._update_plugin_config(
+            {"server": {"fallback_endpoint": DEFAULT_FALLBACK_ENDPOINT}}
+        )
+
+    async def _handle_download_switch(self) -> None:
+        """处理配置页的「下载 Chromium」开关。
+
+        配置页只有开关 + 保存，没有按钮，所以把开关当一次性按钮用：读到 ``True``
+        就启动下载，下载结束（成功或失败）再把开关写回 ``False``；同时按本地实际
+        状态维护 ``chromium_ready``，配置页据此隐藏这个开关。
+        """
+        try:
+            await self._sync_download_switch_state()
+        except Exception as exc:  # pragma: no cover - 后台任务不能把异常抛给事件循环
+            logger.warning(f"[t2i] 处理下载开关失败：{exc}")
+
+    async def _sync_download_switch_state(self) -> None:
+        installed = self.browser_manager.is_installed()
+        await self._update_plugin_config({"browser": {"chromium_ready": installed}})
+        if not self.settings.browser.download_chromium:
+            return
+        if installed:
+            logger.info("[t2i] 下载开关已打开，但本地 Chromium 已就绪，只关闭开关")
+            await self._update_plugin_config({"browser": {"download_chromium": False}})
+            return
+        if not playwright_pip_available():
+            logger.warning(
+                "[t2i] 下载开关已打开，但缺少 Python 包 playwright，无法下载浏览器"
+            )
+            await self._update_plugin_config({"browser": {"download_chromium": False}})
+            return
+        if self.browser_manager.install_state.running:
+            logger.info("[t2i] 已有安装任务在进行，忽略配置页的下载请求")
+            return
+        if not self.browser_manager.start_install(
+            install_deps=self.settings.browser.auto_install_deps
+        ):
+            logger.warning("[t2i] 配置页触发的 Chromium 下载未能启动")
+            await self._update_plugin_config({"browser": {"download_chromium": False}})
+            return
+
+        logger.info(
+            "[t2i] 已按配置页开关开始下载 Chromium："
+            f"{self.browser_manager.download_host_effective() or '默认 CDN'}"
+        )
+        limit = self.settings.browser.install_timeout_seconds
+        waited = 0
+        while (
+            self.browser_manager.install_state.running
+            and waited < limit
+            and not self._closing
+        ):
+            await asyncio.sleep(INSTALL_POLL_SECONDS)
+            waited += INSTALL_POLL_SECONDS
+        if self._closing:
+            return
+
+        state = self.browser_manager.install_state
+        done = state.status == DONE
+        await self._update_plugin_config(
+            {
+                "browser": {
+                    "download_chromium": False,
+                    "chromium_ready": self.browser_manager.is_installed(),
+                }
+            }
+        )
+        if done:
+            logger.info(
+                f"[t2i] 配置页触发的 Chromium 下载完成：{self.browser_manager.find_chromium()}"
+            )
+            await self._apply_endpoint_config()
+        else:
+            logger.warning(f"[t2i] 配置页触发的 Chromium 下载未成功：{state.message}")
+
+    async def _update_plugin_config(
+        self, changes: dict[str, dict[str, object]]
+    ) -> None:
+        """把少量状态回写到插件自己的配置文件（仅一处分：下载开关）。
+
+        配置页没有按钮控件，只能用开关 + 保存触发动作，因此需要把开关收回、
+        把浏览器就绪状态反馈给配置页；除此之外插件不写自己的配置。
+        """
+        raw = self._raw_config
+        if not isinstance(raw, dict):
+            return
+        dirty = False
+        for section, values in changes.items():
+            target = raw.setdefault(section, {})
+            if not isinstance(target, dict):
+                continue
+            for key, value in values.items():
+                if target.get(key) != value:
+                    target[key] = value
+                    dirty = True
+        if not dirty:
+            return
+
+        saver_async = getattr(raw, "save_config_async", None)
+        saver_sync = getattr(raw, "save_config", None)
+        try:
+            if callable(saver_async):
+                await saver_async()
+            elif callable(saver_sync):
+                saver_sync()
+            else:  # 非 AstrBot 运行环境（如测试里的裸 dict）
+                logger.debug("[t2i] 配置对象不支持回写，跳过")
+                return
+        except (OSError, TypeError, ValueError) as exc:
+            logger.warning(f"[t2i] 回写插件配置失败：{exc}")
+            return
+        logger.debug(f"[t2i] 插件配置已回写：{changes}")
 
     async def _prelaunch_browser(self) -> None:
         if self._closing:
@@ -261,6 +439,12 @@ class T2IServicePlugin(Star):
             chromium = f"已安装（{Path(browser['chromium_path']).name}）"
         else:
             chromium = "未安装"
+        if not browser["installed"]:
+            deps = "装好 Chromium 后检查"
+        elif browser["missing_libs"]:
+            deps = f"缺少 {'、'.join(browser['missing_libs'])}"
+        else:
+            deps = "齐全"
         lines = [
             "【文转图服务状态】",
             f"内嵌服务：{'运行中' if server['running'] else '未运行'}"
@@ -268,6 +452,7 @@ class T2IServicePlugin(Star):
             f"累计请求：{server['requests']} 次；透传备用端点 {server['fallback_used']} 次",
             f"Python playwright：{'已安装' if browser['pip_playwright'] else '未安装'}",
             f"Chromium：{chromium}",
+            f"系统依赖：{deps}",
             f"浏览器进程：{browser['processes']} 个，占用 {browser['process_memory_mb']} MB",
             f"浏览器连接：{'已连接' if renderer['connected'] else '空闲/未启动'}",
             f"插件浏览器目录：{browser['browsers_path']}",
@@ -275,12 +460,21 @@ class T2IServicePlugin(Star):
             f"AstrBot 文转图端点：{endpoint['astrbot_t2i_endpoint'] or '（未设置）'}"
             f"（策略：{endpoint['astrbot_t2i_strategy'] or '未知'}）",
         ]
+        if browser["deps"]["status"] != "idle":
+            lines.append(
+                f"依赖补装：{browser['deps']['status']} - {browser['deps']['message']}"
+            )
         if server["last_error"]:
             lines.append(f"最近错误：{server['last_error']}")
         if not browser["pip_playwright"]:
             lines.append("提示：重装插件可让 AstrBot 自动安装 playwright 依赖")
         elif not browser["installed"]:
-            lines.append("提示：发送 /t2i_install 安装 Chromium（约 1GB 下载）")
+            lines.append(
+                "提示：发送 /t2i_install 安装 Chromium，"
+                "或在插件配置里打开「下载 Chromium 浏览器」并保存"
+            )
+        elif browser["missing_libs"]:
+            lines.append("提示：Chromium 缺少系统运行库，发送 /t2i_install 可自动补装")
         return "\n".join(lines)
 
     # ---------------------------------------------------------------- 命令
@@ -290,9 +484,46 @@ class T2IServicePlugin(Star):
         """查看文转图服务与 Chromium 状态。"""
         yield event.plain_result(self._status_text())
 
+    def _install_plan(self) -> str:
+        """决定 /t2i_install 该做什么：装浏览器、只补系统库，还是什么都不用做。"""
+        manager = self.browser_manager
+        if not manager.is_installed():
+            return "install"
+        return "deps" if manager.missing_shared_libs() else "none"
+
+    async def _follow_install(
+        self, event: AstrMessageEvent, state_name: str
+    ) -> AsyncIterator[MessageEventResult]:
+        """轮询安装状态并推送进度；日志尾巴里就是用户最关心的下载/安装进度。"""
+        manager = self.browser_manager
+        limit = self.settings.browser.install_timeout_seconds
+        started = time.time()
+        sent = 0
+        while True:
+            state = getattr(manager, state_name)
+            if not state.running:
+                break
+            await asyncio.sleep(INSTALL_POLL_SECONDS)
+            state = getattr(manager, state_name)
+            if not state.running:
+                break
+            waited = time.time() - started
+            if waited > limit:
+                break
+            if sent >= INSTALL_PROGRESS_MAX:
+                continue
+            if waited < (sent + 1) * INSTALL_PROGRESS_INTERVAL:
+                continue
+            sent += 1
+            tail = "\n".join(state.log_tail[-2:])
+            yield event.plain_result(
+                f"安装中…已用时 {waited:.0f}s｜{state.message}"
+                + (f"\n{tail}" if tail else "")
+            )
+
     @filter.command("t2i_install")
     async def cmd_install(self, event: AstrMessageEvent):
-        """安装 Chromium 浏览器（后台下载，带进度提示）。"""
+        """安装 Chromium；浏览器已就绪但缺系统库时改为补装系统依赖。"""
         if not playwright_pip_available():
             yield event.plain_result(
                 "未检测到 Python 包 playwright。请先在 AstrBot 中重装本插件"
@@ -300,50 +531,54 @@ class T2IServicePlugin(Star):
                 "`pip install playwright`。"
             )
             return
-        if self.browser_manager.install_state.running:
+        manager = self.browser_manager
+        if manager.install_state.running or manager.deps_state.running:
             yield event.plain_result("已有安装任务在进行中，可用 /t2i_status 查看进度。")
             return
-        if self.browser_manager.is_installed():
+
+        plan = self._install_plan()
+        if plan == "none":
             yield event.plain_result(
-                f"Chromium 已安装：{self.browser_manager.find_chromium()}\n"
+                f"Chromium 已安装且系统依赖齐全：{manager.find_chromium()}\n"
                 "如需强制重装，请删除插件数据目录下的 browsers 文件夹后重试。"
             )
             return
 
-        self.browser_manager.start_install(
-            install_deps=self.settings.browser.auto_install_deps
-        )
-        yield event.plain_result(
-            "已开始安装 Chromium…\n"
-            f"下载源：{self.browser_manager.download_host_effective() or '默认 CDN'}\n"
-            f"安装目录：{self.browser_manager.browsers_path}"
-        )
-
-        sent = 0
-        waited = 0
-        limit = self.settings.browser.install_timeout_seconds
-        while self.browser_manager.install_state.running and waited < limit:
-            await asyncio.sleep(INSTALL_POLL_SECONDS)
-            waited += INSTALL_POLL_SECONDS
-            state = self.browser_manager.install_state
-            if not state.running:
-                break
-            if waited % INSTALL_PROGRESS_INTERVAL != 0 or sent >= INSTALL_PROGRESS_MAX:
-                continue
-            sent += 1
-            tail = "\n".join(state.log_tail[-2:])
+        if plan == "deps":
+            if not deps_install_available():
+                yield event.plain_result(
+                    "❌ Chromium 缺少系统运行库："
+                    f"{'、'.join(manager.missing_shared_libs())}\n"
+                    "自动补装需要 AstrBot 进程为 root 且容器内有 apt-get/dnf；"
+                    "请手动执行 `playwright install-deps chromium`。"
+                )
+                return
+            manager.start_install_deps()
             yield event.plain_result(
-                f"安装中…已用时 {state.elapsed:.0f}s｜{state.message}"
-                + (f"\n{tail}" if tail else "")
+                f"Chromium 已安装，但缺少系统运行库："
+                f"{'、'.join(manager.missing_shared_libs())}\n正在自动补装…"
             )
+            state_name = "deps_state"
+        else:
+            manager.start_install(install_deps=self.settings.browser.auto_install_deps)
+            yield event.plain_result(
+                "已开始安装 Chromium…\n"
+                f"下载源：{manager.download_host_effective() or '默认 CDN'}\n"
+                f"安装目录：{manager.browsers_path}"
+            )
+            state_name = "install_state"
 
-        state = self.browser_manager.install_state
+        async for progress in self._follow_install(event, state_name):
+            yield progress
+
+        state = getattr(manager, state_name)
         if state.status == "done":
             yield event.plain_result(
-                f"✅ {state.message}\n浏览器路径：{self.browser_manager.find_chromium()}\n"
+                f"✅ {state.message}\n浏览器路径：{manager.find_chromium()}\n"
                 "可以发送 /t2i_test 验证渲染效果。"
             )
-            await self._apply_endpoint_config()
+            if state_name == "install_state":
+                await self._apply_endpoint_config()
         else:
             yield event.plain_result(f"❌ 安装未成功：{state.message}")
 
@@ -429,26 +664,55 @@ class T2IServicePlugin(Star):
             return error_response(
                 "未安装 Python 包 playwright，请重装插件以自动安装依赖", status_code=400
             )
-        chromium = self.browser_manager.find_chromium()
+        manager = self.browser_manager
+        chromium = manager.find_chromium()
         if chromium is not None:
+            missing = manager.missing_shared_libs()
+            if not missing:
+                return json_response(
+                    {
+                        "status": "ok",
+                        "data": {
+                            "already_installed": True,
+                            "chromium_path": str(chromium),
+                        },
+                    }
+                )
+            if not deps_install_available():
+                return error_response(
+                    "Chromium 缺少系统运行库（"
+                    + "、".join(missing)
+                    + "）；自动补装需要 root 与 apt-get/dnf，"
+                    "请手动执行 `playwright install-deps chromium`",
+                    status_code=400,
+                )
             return json_response(
                 {
                     "status": "ok",
-                    "data": {"already_installed": True, "chromium_path": str(chromium)},
+                    "data": {
+                        "started": manager.start_install_deps(),
+                        "mode": "deps",
+                        "missing_libs": missing,
+                    },
                 }
             )
-        started = self.browser_manager.start_install(
+        started = manager.start_install(
             install_deps=self.settings.browser.auto_install_deps
         )
-        return json_response({"status": "ok", "data": {"started": started}})
+        return json_response(
+            {"status": "ok", "data": {"started": started, "mode": "install"}}
+        )
 
     async def web_install_state(self):
+        manager = self.browser_manager
         return json_response(
             {
                 "status": "ok",
                 "data": {
-                    **self.browser_manager.install_state.as_dict(),
-                    "installed": self.browser_manager.is_installed(),
+                    **manager.install_state.as_dict(),
+                    "installed": manager.is_installed(),
+                    "missing_libs": manager.missing_shared_libs(),
+                    "deps": manager.deps_state.as_dict(),
                 },
             }
         )

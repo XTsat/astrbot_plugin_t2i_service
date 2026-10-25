@@ -11,7 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-DEFAULT_FALLBACK_ENDPOINT = "https://t2i.soulter.top/text2img"
+# AstrBot 官方文档给出两个公共端点，其中 soulter.top 目前回复 503 no available
+# server，默认值取能用的那个；用户可改成自建服务地址。
+DEFAULT_FALLBACK_ENDPOINT = "https://t2i.rcfortress.site/text2img"
 DEFAULT_DOWNLOAD_HOST = "https://cdn.npmmirror.com/binaries/playwright"
 DEFAULT_PORT = 8999
 
@@ -87,9 +89,12 @@ class BrowserConfig:
     browsers_path: str = ""
     download_host: str = DEFAULT_DOWNLOAD_HOST
     executable_path: str = ""
-    auto_install_deps: bool = False
+    auto_install_deps: bool = True
     cleanup_orphans: bool = True
     install_timeout_seconds: int = 900
+    download_chromium: bool = False
+    # 由插件按本地实际状态回写，配置页据此隐藏「下载 Chromium」开关
+    chromium_ready: bool = False
 
 
 @dataclass
@@ -153,11 +158,13 @@ class T2IConfig:
                 browser_raw.get("download_host"), DEFAULT_DOWNLOAD_HOST
             ),
             executable_path=_as_str(browser_raw.get("executable_path")),
-            auto_install_deps=_as_bool(browser_raw.get("auto_install_deps"), False),
+            auto_install_deps=_as_bool(browser_raw.get("auto_install_deps"), True),
             cleanup_orphans=_as_bool(browser_raw.get("cleanup_orphans"), True),
             install_timeout_seconds=max(
                 60, _as_int(browser_raw.get("install_timeout_seconds"), 900)
             ),
+            download_chromium=_as_bool(browser_raw.get("download_chromium"), False),
+            chromium_ready=_as_bool(browser_raw.get("chromium_ready"), False),
         )
 
         endpoint = EndpointConfig(

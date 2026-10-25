@@ -254,40 +254,144 @@ async def test_local_render_unavailable_and_fallback_disabled_is_503(
         await test_client.close()
 
 
-async def test_fallback_forwards_original_payload_to_upstream(tmp_path: Path):
-    """本机不可用时把原始 payload 透传给备用端点（用一个桩上游验证）。"""
-    seen: list[dict] = []
+PNG_BYTES = b"\x89PNG\r\n\x1a\nfallback-image-bytes"
+
+
+async def _start_upstream(handler) -> tuple[TestServer, list]:
+    """起一个假的备用端点，返回 (server, 请求记录)。"""
+    seen: list[web.Request] = []
+
+    async def generate(request: web.Request) -> web.Response:
+        seen.append(await request.json())
+        return await handler(request)
+
+    app = web.Application()
+    app.router.add_post("/text2img/generate", generate)
+    app.router.add_get("/text2img/data/{image_id}", handler_data)
+    server = TestServer(app)
+    await server.start_server()
+    return server, seen
+
+
+async def handler_data(request: web.Request) -> web.Response:
+    return web.Response(body=PNG_BYTES, content_type="image/png")
+
+
+async def _start_plugin(tmp_path: Path, upstream_port: int, installed: bool = False):
+    config = T2IConfig.from_raw({})
+    config.server.fallback_endpoint = f"http://127.0.0.1:{upstream_port}/text2img"
+    server = T2IHttpServer(
+        config=config,
+        renderer=FakeRenderer(tmp_path),
+        data_dir=str(tmp_path),
+        browser_manager=FakeBrowserManager(installed=installed),
+    )
+    test_client = TestClient(TestServer(server._build_app()))
+    await test_client.start_server()
+    return test_client, server
+
+
+async def test_fallback_saves_upstream_image_and_returns_local_id(tmp_path: Path):
+    """本机不可用时透传；把上游图片落到本地，id 指向本插件的 /text2img/data。"""
 
     async def upstream_generate(request: web.Request) -> web.Response:
-        seen.append(await request.json())
+        return web.Response(body=PNG_BYTES, content_type="image/png")
+
+    upstream, seen = await _start_upstream(upstream_generate)
+    try:
+        test_client, server = await _start_plugin(tmp_path, upstream.port)
+        try:
+            resp = await test_client.post(
+                "/text2img/generate", json={"html": "<p>x</p>", "json": True}
+            )
+            assert resp.status == 200
+            image_id = (await resp.json())["data"]["id"]
+            assert image_id.startswith("data/fallback_")
+            # 上游永远被要求直接回图片字节，避免拿到对岸的临时 id
+            assert seen == [{"html": "<p>x</p>", "json": False}]
+            assert server.fallback_used == 1
+
+            # 主程序随后按 /text2img/data/{id} 取图，必须真能取到
+            image = await test_client.get(f"/text2img/{image_id}")
+            assert image.status == 200
+            assert await image.read() == PNG_BYTES
+        finally:
+            await test_client.close()
+            await server.stop()
+    finally:
+        await upstream.close()
+
+
+async def test_fallback_without_json_returns_image_bytes(tmp_path: Path):
+    """调用方要字节流时直接回图片，但同样要落盘（便于之后按 id 复取）。"""
+
+    async def upstream_generate(request: web.Request) -> web.Response:
+        return web.Response(body=PNG_BYTES, content_type="image/png")
+
+    upstream, _ = await _start_upstream(upstream_generate)
+    try:
+        test_client, server = await _start_plugin(tmp_path, upstream.port)
+        try:
+            resp = await test_client.post("/text2img/generate", json={"html": "<p>x</p>"})
+            assert resp.status == 200
+            assert resp.headers["Content-Type"] == "image/png"
+            assert await resp.read() == PNG_BYTES
+            assert server.fallback_used == 1
+        finally:
+            await test_client.close()
+            await server.stop()
+    finally:
+        await upstream.close()
+
+
+async def test_fallback_follows_upstream_id_when_upstream_returns_json(tmp_path: Path):
+    """上游忽略 json=false、仍回 {"data":{"id":...}} 时，按 id 再取一次图片。"""
+
+    async def upstream_generate(request: web.Request) -> web.Response:
         return web.json_response(
             {"code": 0, "message": "success", "data": {"id": "data/upstream.png"}}
         )
 
-    upstream_app = web.Application()
-    upstream_app.router.add_post("/text2img/generate", upstream_generate)
-    upstream = TestServer(upstream_app)
-    await upstream.start_server()
+    upstream, _ = await _start_upstream(upstream_generate)
     try:
-        config = T2IConfig.from_raw({})
-        config.server.fallback_endpoint = (
-            f"http://127.0.0.1:{upstream.port}/text2img"
-        )
-        server = T2IHttpServer(
-            config=config,
-            renderer=FakeRenderer(tmp_path),
-            data_dir=str(tmp_path),
-            browser_manager=FakeBrowserManager(installed=False),
-        )
-        test_client = TestClient(TestServer(server._build_app()))
-        await test_client.start_server()
+        test_client, server = await _start_plugin(tmp_path, upstream.port)
         try:
-            body = {"html": "<p>x</p>", "json": True}
-            resp = await test_client.post("/text2img/generate", json=body)
+            resp = await test_client.post(
+                "/text2img/generate", json={"html": "<p>x</p>", "json": True}
+            )
             assert resp.status == 200
-            assert (await resp.json())["data"]["id"] == "data/upstream.png"
-            assert seen == [body]
-            assert server.fallback_used == 1
+            image_id = (await resp.json())["data"]["id"]
+            assert image_id.startswith("data/fallback_")
+            image = await test_client.get(f"/text2img/{image_id}")
+            assert await image.read() == PNG_BYTES
+        finally:
+            await test_client.close()
+            await server.stop()
+    finally:
+        await upstream.close()
+
+
+async def test_fallback_upstream_error_is_503_with_message(tmp_path: Path):
+    """备用端点自己报错时，把它的原因回给调用方，而不是回一张坏图。"""
+
+    async def upstream_generate(request: web.Request) -> web.Response:
+        return web.json_response(
+            {"code": 1, "message": "render queue wait exceeded", "data": {}},
+            status=429,
+        )
+
+    upstream, _ = await _start_upstream(upstream_generate)
+    try:
+        test_client, server = await _start_plugin(tmp_path, upstream.port)
+        try:
+            resp = await test_client.post(
+                "/text2img/generate", json={"html": "<p>x</p>", "json": True}
+            )
+            assert resp.status == 503
+            payload = await resp.json()
+            assert payload["code"] == 1
+            assert "render queue wait exceeded" in payload["message"]
+            assert server.fallback_used == 0
         finally:
             await test_client.close()
             await server.stop()

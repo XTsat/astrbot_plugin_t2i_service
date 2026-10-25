@@ -15,6 +15,7 @@ This plugin embeds the same render service directly into AstrBot:
 - reuses AstrBot's own Python environment — no extra container or port mapping;
 - renders in-process over loopback, no cross-host latency;
 - ships a Chromium installer (mirror-friendly), status checks, orphan process cleanup and optional endpoint auto-configuration;
+- checks Chromium's system libraries and installs the missing ones on demand, so a downloaded-but-unlaunchable browser does not leave you stuck;
 - keeps the upstream HTTP contract, so AstrBot and any compatible client need no code changes.
 
 | | Public endpoint | Standalone container | This plugin |
@@ -29,7 +30,7 @@ This plugin embeds the same render service directly into AstrBot:
 1. Install from the AstrBot WebUI plugin market (or drop this repo into `data/plugins/astrbot_plugin_t2i_service`).
 2. Installation only `pip install`s `playwright` (~40 MB); Chromium is **not** downloaded automatically.
 3. Restart AstrBot and confirm `server.enabled` / `server.port` (default `127.0.0.1:8999`).
-4. Run `/t2i_install` to download Chromium (~200 MB, npmmirror by default; `/t2i_install mirror` to switch).
+4. Download Chromium (~200 MB, npmmirror by default): turn on **Download Chromium** in the plugin config and save, or run `/t2i_install` (`/t2i_install mirror` for the China mirror). If the container lacks system libraries, the same flow installs them next.
 5. Run `/t2i_test` to verify. To auto-wire AstrBot's endpoint, enable `endpoint.auto_configure` or click **Apply endpoint** on the WebUI plugin page.
 
 > Rendered images land in the plugin data directory (`data/plugin_data/astrbot_plugin_t2i_service/data/`) and are cleaned after 24 hours.
@@ -38,8 +39,8 @@ This plugin embeds the same render service directly into AstrBot:
 
 | Command | Description |
 | --- | --- |
-| `/t2i_status` | Service URL, browser state, render stats, concurrency |
-| `/t2i_install` | Download and install Chromium (`/t2i_install mirror` for the CN mirror) |
+| `/t2i_status` | Service URL, browser state, system libraries, render stats, concurrency |
+| `/t2i_install` | Download and install Chromium (`/t2i_install mirror` for the CN mirror); installs missing system libraries when the browser is already there but cannot launch |
 | `/t2i_test` | Render a self-check card and send the image back |
 | `/t2i_restart` | Restart the embedded service and close the browser |
 
@@ -56,7 +57,7 @@ Configuration groups (see `_conf_schema.json`):
 | `port` | `8999` | Listen port |
 | `auth_token` | empty | When set, requires `Authorization: Bearer <token>` |
 | `fallback_enabled` | `true` | Proxy to the upstream public endpoint when local rendering fails |
-| `fallback_endpoint` | `https://t2i.soulter.top/text2img` | Fallback target |
+| `fallback_endpoint` | `https://t2i.rcfortress.site/text2img` | Fallback target (the image is downloaded locally before it is returned; a self-hosted URL works too) |
 
 ### `render`
 
@@ -77,7 +78,9 @@ Configuration groups (see `_conf_schema.json`):
 | `browsers_path` | empty | Browser install dir; defaults to the plugin data dir `browsers/` |
 | `download_host` | `https://cdn.npmmirror.com/binaries/playwright` | Playwright download host |
 | `executable_path` | empty | Reuse an existing Chromium binary |
-| `auto_install_deps` | `false` | Also install system deps (needs root + apt/dnf) |
+| `auto_install_deps` | `true` | Install missing system libraries automatically (needs root + apt/dnf; degrades to a warning when unavailable) |
+| `download_chromium` | `false` | Turn it on and save the config to start the Chromium download, no command needed; the switch closes itself once the download ends |
+| `chromium_ready` | `false` | Whether Chromium is ready — maintained by the plugin, edit it by hand at your own risk |
 | `cleanup_orphans` | `true` | Kill leftover Chromium on startup |
 | `install_timeout_seconds` | `900` | Download timeout |
 
@@ -178,9 +181,13 @@ Env vars, S3/R2 storage and Prometheus metrics behave as upstream — see [`docs
 
 ## FAQ
 
-**Chromium download is slow/fails** — use `/t2i_install mirror`, set `browser.download_host`, or point `browser.browsers_path` at an existing `PLAYWRIGHT_BROWSERS_PATH`.
+**Chromium download is slow/fails** — the npmmirror mirror is used by default; set `browser.download_host`, or point `browser.browsers_path` at an existing `PLAYWRIGHT_BROWSERS_PATH`. The **Download Chromium** switch closes itself when the download ends: if it closed while `chromium_ready` is still false, that run failed — check the install log on the plugin page or `/t2i_status`.
+
+**`BrowserType.launch: Target page, context or browser has been closed` / `error while loading shared libraries: libnspr4.so`** — the container is missing Chromium's system libraries (`libnspr4`, `libnss3`, `libatk`, ...), even though the browser itself is downloaded. Run `/t2i_install` to install them (AstrBot must run as root with `apt-get`/`dnf` available); otherwise the plugin prints the command you can run manually.
 
 **`No usable sandbox!`** — the official AstrBot image runs as root; keep `render.no_sandbox=true`.
+
+**Fallback endpoint errors or slow images** — until Chromium is ready, requests are proxied to `server.fallback_endpoint` (the official public endpoint `https://t2i.rcfortress.site/text2img` by default; it runs abroad and answers `render queue wait exceeded` when the queue is long; a retired default left over from an older version is replaced by the current default at startup). Once the local Chromium is installed the fallback is no longer used; you can also point `fallback_endpoint` at your own service or turn `server.fallback_enabled` off.
 
 **Port already in use** — change `server.port`, then re-apply the endpoint.
 

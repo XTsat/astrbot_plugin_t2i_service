@@ -144,9 +144,32 @@ def build_status_card(payload: dict) -> str:
     endpoint = payload.get("endpoint", {}) or {}
     install = browser.get("install", {}) or {}
 
+    deps = browser.get("deps", {}) or {}
+    missing_libs = browser.get("missing_libs") or []
+
     running = bool(server.get("running"))
     installed = bool(browser.get("installed"))
     connected = bool(renderer.get("connected"))
+
+    if not installed:
+        deps_pill = '<span class="mono">装好 Chromium 后检查</span>'
+    elif missing_libs:
+        deps_pill = (
+            _pill(False, "齐全", "缺少")
+            + ' <span class="mono">'
+            + _esc("、".join(missing_libs))
+            + "</span>"
+        )
+    else:
+        deps_pill = _pill(True, "齐全", "缺少")
+    if deps.get("status") not in (None, "", "idle"):
+        deps_pill += (
+            ' <span class="mono">· 补装 '
+            + _esc(deps.get("status", ""))
+            + " "
+            + _esc(deps.get("message", ""))
+            + "</span>"
+        )
 
     def row(key: str, value: str, mono: bool = False) -> str:
         cls = "v mono" if mono else "v"
@@ -177,6 +200,7 @@ def build_status_card(payload: dict) -> str:
                 else ""
             ),
         ),
+        row("系统依赖", deps_pill),
         row(
             "浏览器进程",
             f'{_esc(browser.get("processes", 0))} 个 · '
