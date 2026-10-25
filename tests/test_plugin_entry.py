@@ -72,27 +72,12 @@ async def test_config_is_parsed_into_components(plugin):
     assert instance.images_dir.is_dir()
 
 
-async def test_web_apis_are_registered(plugin):
+async def test_web_apis_are_not_registered(plugin):
     port = free_port()
     instance = plugin(
         {"server": {"enabled": False, "port": port}, "render": {"prelaunch": False}}
     )
-    instance._register_web_apis()
-    routes = {route for route, *_ in instance.context.web_apis}
-    base = "/astrbot_plugin_t2i_service"
-    assert routes == {
-        f"{base}/status",
-        f"{base}/install",
-        f"{base}/install/state",
-        f"{base}/render-test",
-        f"{base}/apply-endpoint",
-        f"{base}/restart",
-        f"{base}/status-card",
-    }
-    for route, handler, methods, desc in instance.context.web_apis:
-        assert callable(handler)
-        assert methods and all(m in {"GET", "POST"} for m in methods)
-        assert desc
+    assert instance.context.web_apis == []
 
 
 async def test_initialize_starts_embedded_server_and_terminate_stops_it(plugin):
@@ -375,6 +360,27 @@ async def test_apply_endpoint_config_turns_on_t2i_output_switch(plugin):
     assert core["t2i_endpoint"] == f"http://127.0.0.1:{port}/text2img"
     assert core.saves == 1
     assert instance._status_payload()["endpoint"]["astrbot_t2i_enabled"] is True
+
+
+async def test_apply_endpoint_config_leaves_t2i_switch_when_disabled(plugin):
+    """总开关拆分开关关着时，只写端点与策略，不碰「文本转图像输出」总开关。"""
+    core = RecordingConfig({"t2i": False, "t2i_endpoint": "", "t2i_strategy": "local"})
+    port = free_port()
+    raw = {
+        "server": {"enabled": False, "host": "127.0.0.1", "port": port},
+        "render": {"prelaunch": False},
+        "endpoint": {"auto_configure": True, "enable_t2i_output": False},
+        "browser": {"cleanup_orphans": False},
+    }
+    instance = plugin_main.T2IServicePlugin(FakeContext(core), raw)
+
+    await instance._apply_endpoint_config()
+
+    assert core["t2i"] is False
+    assert core["t2i_strategy"] == "remote"
+    assert core["t2i_endpoint"] == f"http://127.0.0.1:{port}/text2img"
+    assert core.saves == 1
+    assert instance._status_payload()["endpoint"]["enable_t2i_output"] is False
 
 
 async def test_apply_endpoint_config_is_noop_when_switch_off(plugin):

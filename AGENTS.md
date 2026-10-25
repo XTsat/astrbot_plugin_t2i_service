@@ -23,7 +23,7 @@
 
 | 文件 / 目录 | 必选 | 职责 |
 |------|------|------|
-| `main.py` | ✅ | Star 插件入口：生命周期、4 个命令、7 个 Web API、周期清理、端点写入 |
+| `main.py` | ✅ | Star 插件入口：生命周期、4 个命令、周期清理、端点写入 |
 | `metadata.yaml` | ✅ | 插件元数据（name/version/author/desc/repo/astrbot_version/tags），**唯一版本源** |
 | `_conf_schema.json` | ✅ | WebUI 配置 Schema（`server` / `render` / `browser` / `endpoint` / `storage` 五段） |
 | `README.md` + `README_en.md` | ✅ | 用户文档，中文版为权威源 |
@@ -34,9 +34,8 @@
 | `t2i_core/` | ✅ | 渲染核心（自上游移植）：`render` / `api` / `storage` / `metrics` / `util`，**零 AstrBot 依赖** |
 | `service/main.py` | ✅ | 独立服务（FastAPI）入口；插件模式下不执行 |
 | `tests/` | ✅ | pytest 套件（核心层 + 插件层），CI 主线 |
-| `pages/t2i/index.html` | 可选 | WebUI 控制台页面（原生 JS，单文件内联样式与脚本） |
 | `.astrbot-plugin/i18n/` | 可选 | 元数据与页面 i18n（`zh-CN.json` / `en-US.json`），已存在 |
-| `docs/` | 可选 | 接口文档（`APIS.md`、`PAGES-API.md`）、环境基线（`ENV-REPORT.md`）、独立服务文档与 README 配图 |
+| `docs/` | 可选 | 接口文档（`APIS.md`）、环境基线（`ENV-REPORT.md`）、独立服务文档与 README 配图 |
 | `tools/envlab/` | 可选 | 环境基线与抓图脚本，非运行时依赖 |
 | `pyproject.toml` | 可选 | 开发/独立服务依赖与 pytest 配置 |
 | `requirements-standalone.txt` | 可选 | 独立服务额外依赖 |
@@ -54,7 +53,7 @@
 
 ```
 astrbot_plugin_t2i_service/
-├── main.py                 # Star 插件入口（命令 / Web API / 生命周期）
+├── main.py                 # Star 插件入口（命令 / 生命周期）
 ├── metadata.yaml           # 插件元数据（唯一版本源）
 ├── _conf_schema.json       # 插件配置 Schema
 ├── CHANGELOG.md
@@ -75,7 +74,6 @@ astrbot_plugin_t2i_service/
 │   ├── metrics.py          # Prometheus 指标
 │   └── util.py             # 文件命名、过期清理
 ├── service/main.py         # 独立服务入口（uvicorn）
-├── pages/t2i/index.html    # WebUI 控制台（单文件）
 ├── .astrbot-plugin/i18n/   # zh-CN.json / en-US.json
 ├── tests/
 ├── docs/
@@ -102,10 +100,10 @@ service/main.py ─────────────────────�
 
 | 新增内容 | 落点 |
 |------|------|
-| 聊天命令 / Web API / 生命周期钩子 | `main.py`（命令方法按要求分节注释） |
+| 聊天命令 / 生命周期钩子 | `main.py`（命令方法按要求分节注释） |
 | 配置项 | `t2i_plugin/config.py` 的 dataclass 字段 + `_conf_schema.json` + README 配置表 |
 | 浏览器供给（检测、下载、清理） | `t2i_plugin/browser.py` |
-| 卡片 / 页面用的 HTML 片段 | `t2i_plugin/card.py` |
+| 卡片用的 HTML 片段 | `t2i_plugin/card.py` |
 | HTTP 契约、鉴权、失败透传 | `t2i_plugin/server.py` |
 | 渲染与截图行为、模板处理 | `t2i_core/render.py` |
 | 图片存储与过期 | `t2i_core/storage.py`、`t2i_core/util.py` |
@@ -172,8 +170,8 @@ class T2IServicePlugin(Star):
 | 元素 | 约定 |
 |------|------|
 | 模块级常量 | `UPPER_SNAKE`（`PLUGIN_NAME`、`CLEANUP_TICK_SECONDS`） |
-| 私有方法 | `_` 前缀 + `snake_case`（`_status_payload`、`_register_web_apis`） |
-| Web API 方法 | `web_` 前缀（`web_status`、`web_render_test`）——**本项目统一用 `web_`**，新增沿用 |
+| 私有方法 | `_` 前缀 + `snake_case`（`_status_payload`、`_apply_endpoint_config`） |
+| Web API 方法 | （本插件当前不注册 Web API；若未来新增，用 `web_` 前缀） |
 | 命令方法 | `cmd_` 前缀（`cmd_status`、`cmd_install`） |
 | 类名 | `PascalCase`（`T2IServicePlugin`、`BrowserManager`、`T2IHttpServer`） |
 | 文件名 | `snake_case`（`browser.py`、`_conf_schema.json`） |
@@ -200,10 +198,10 @@ class T2IServicePlugin(Star):
 
 ### 4.6 错误处理与防御性编程
 
-- 面对不会按预期工作的输入必须优雅 fallback：配置缺项 → 默认值；浏览器没装 → 透传 `fallback_endpoint`；图片读不出来 → 返回 `error_response`
+- 面对不会按预期工作的输入必须优雅 fallback：配置缺项 → 默认值；浏览器没装 → 透传 `fallback_endpoint`
 - 外部 IO 必须 try/except 并记录日志，**不允许静默吞异常**
 - 配置值防御式校验：`max(1, int(...))`、端口范围校验、`(TypeError, ValueError)` → 默认值
-- 降级链路必须清晰：内嵌渲染 → 透传备用端点 → 明确报错；每级都要能在 `/t2i_status` 与页面状态里看到
+- 降级链路必须清晰：内嵌渲染 → 透传备用端点 → 明确报错；每级都要能在 `/t2i_status` 里看到
 
 ### 4.7 并发
 
@@ -293,27 +291,6 @@ async def cmd_status(self, event: AstrMessageEvent):
 | `/t2i_install` | 全部（见 4.9） | 下载并安装 Chromium；`/t2i_install mirror` 走国内镜像 |
 | `/t2i_test` | 全部 | 渲染自检卡片并回图，验证整条链路 |
 | `/t2i_restart` | 全部（见 4.9） | 重启内嵌渲染服务并释放 Chromium |
-
-### 6.3 Web API 与页面
-
-Web API 前缀固定为 `/{PLUGIN_NAME}`（`/astrbot_plugin_t2i_service/...`），**约定见 `docs/PAGES-API.md`**：
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/status` | 服务/浏览器/端点状态 |
-| POST | `/install` | 启动 Chromium 安装 |
-| GET | `/install/state` | 安装进度 |
-| POST | `/render-test` | 渲染自检卡片 |
-| POST | `/apply-endpoint` | 把 AstrBot 端点指向本插件 |
-| POST | `/restart` | 重启内嵌服务 |
-| GET | `/status-card` | 状态卡片图片（data URL） |
-
-页面约束：
-
-- AstrBot 只认 `pages/<页面名>/index.html`（页面根目录名为 `views` 或 `pages`），页面名 `t2i` 与 `.astrbot-plugin/i18n` 里的 key 一致。
-- 现有页面是**单文件**（`<style>` / `<script>` 内联），新增页面沿用该形态，不要引入构建链或外部 CDN。
-- 页面调用的接口路径写全 `/{PLUGIN_NAME}/...`，返回体统一 `{"status": "ok"|"error", "data": ...}`。
-- 改接口必须同时更新 `docs/PAGES-API.md` 与页面本身，两边不一致视为未完成。
 
 ---
 
@@ -506,7 +483,7 @@ README 正文严格按以下 4 大板块组织，但不强制使用 `##` 标题�
   - 好：`# 插件目录入 sys.path，因为 AstrBot 以包路径加载 main.py，子模块不一定可导入`
 - **禁止残留 intermediate attempts**：不保留被注释掉的旧代码、TODO 但未完成的方案、调试输出
 - 方法级 docstring 用中文说明用途/参数/返回（仅对 `_` 开头私有方法可省略，如果用途足够明显）
-- 代码分区用 `# ---- 分区名 ----` 分隔条（`main.py` 已按此组织：状态信息 / 命令 / Web API / 生命周期）
+- 代码分区用 `# ---- 分区名 ----` 分隔条（`main.py` 已按此组织：状态信息 / 命令 / 生命周期）
 
 ### 7.4 PR 描述规范
 
@@ -563,7 +540,6 @@ README 正文严格按以下 4 大板块组织，但不强制使用 `##` 标题�
 - [ ] 日志：`[t2i]` 前缀，异常分类记录，无空 catch，高频轮询用 debug
 - [ ] 配置：新增配置项已在 `_conf_schema.json`、`t2i_plugin/config.py` 与 README 配置表三处同步
 - [ ] 权限：新增的下载/重启/写配置类命令已加 `@filter.permission_type(filter.PermissionType.ADMIN)`
-- [ ] 页面与接口文档：改接口时 `docs/PAGES-API.md`、`pages/t2i/index.html` 已同步
 - [ ] CHANGELOG：`[Unreleased]` 已追加条目，**只写相对上一版的变化**、同一变化已合并为一条（无重复条目），条目面向用户（无内部实现细节、无复杂形容即可看懂），保留了他人的既有记录
 - [ ] README：涉及用户可见变更时已同步更新（中文先落，再同步英文），且面向用户书写（无实现原理与内部细节）
 - [ ] 版本号：日常任务不递增版本号；仅发版任务改 `metadata.yaml` 的 `version`（与 CHANGELOG 新版本段、tag 一致），并把 README 徽章、i18n 等辅助位置同步到同一版本号

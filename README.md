@@ -31,7 +31,7 @@ AstrBot 的文转图能力默认走「远端端点」（`t2i_strategy: remote` +
 2. 插件安装时只会 `pip install playwright`（约 40 MB 的 Python 包），**不会**自动下载 Chromium。
 3. 重启 AstrBot，在插件配置里确认 `server.enabled` 与 `server.port`（默认 `127.0.0.1:8999`）。
 4. 下载 Chromium（约 200 MB，默认走 npmmirror 镜像）：在插件配置页打开「下载 Chromium 浏览器」开关并保存即可开始，或发送 `/t2i_install`（`/t2i_install mirror` 走国内镜像）。若容器缺系统运行库，安装流程会接着补装依赖。
-5. 发送 `/t2i_test` 验证出图；成功后文转图即可用。若需自动写入 AstrBot 端点，打开配置 `endpoint.auto_configure` 或点 WebUI 页面上的「应用端点」。
+5. 发送 `/t2i_test` 验证出图；成功后文转图即可用。若需自动写入 AstrBot 端点，打开配置 `endpoint.auto_configure` 。
 
 > 渲染图默认落在插件数据目录 `data/plugin_data/astrbot_plugin_t2i_service/data/`，24 小时后自动清理。
 
@@ -77,7 +77,8 @@ AstrBot 的文转图能力默认走「远端端点」（`t2i_strategy: remote` +
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
 | `current_service_url` | 空 | 本插件当前地址，插件按监听地址与端口自动写入（默认 `http://127.0.0.1:8999/text2img`），仅供查看 |
-| `auto_configure` | `false` | 启动时把端点写进 AstrBot 配置，并打开「文本转图像输出」总开关 |
+| `auto_configure` | `false` | 启动时把端点写进 AstrBot 配置（同时写入策略 `remote`） |
+| `enable_t2i_output` | `true` | 自动写入执行时是否一并打开「文本转图像输出」总开关（`t2i`）；只想改端点地址就关掉 |
 | `service_url` | 空 | 要写入的端点地址，空则按监听地址自动生成 |
 
 ### `render` — 渲染行为
@@ -104,7 +105,7 @@ AstrBot 的文转图能力默认走「远端端点」（`t2i_strategy: remote` +
 插件提供与上游一致的端点，需要让 AstrBot 知道它：
 
 - **查地址**：配置页「接入 AstrBot 文转图」中的「本插件当前地址」就是应填进 AstrBot「文本转图像服务 API 地址」的值（默认 `http://127.0.0.1:8999/text2img`，改了监听地址或端口后自动更新）；
-- **自动**：打开 `endpoint.auto_configure`（或点 WebUI 插件页面上的「应用端点」），插件会把该地址写入 AstrBot、切到远程策略，并打开 AstrBot 的「文本转图像输出」总开关——总开关关着时文转图不会生效；
+- **自动**：打开 `endpoint.auto_configure`，插件会把该地址写入 AstrBot、切到远程策略，并打开 AstrBot 的「文本转图像输出」总开关——总开关关着时文转图不会生效；
 - **手动**：在 AstrBot `data/cmd_config.json` 中确认：
 
 ```jsonc
@@ -119,34 +120,13 @@ AstrBot 的文转图能力默认走「远端端点」（`t2i_strategy: remote` +
 
 ## HTTP API
 
-插件正常加载后注册以下路由（`/api/plug/astrbot_plugin_t2i_service` 前缀，WebUI 页面通过桥接访问 `/api/v1/plugins/extensions/astrbot_plugin_t2i_service/...`）：
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `GET` | `/{plugin}/status` | 服务与浏览器状态汇总 |
-| `POST` | `/{plugin}/install` | 开始下载 Chromium |
-| `GET` | `/{plugin}/install/state` | 下载进度与日志 |
-| `POST` | `/{plugin}/render-test` | 渲染测试卡片并返回图片 |
-| `POST` | `/{plugin}/apply-endpoint` | 把端点写入 AstrBot 配置并打开「文本转图像输出」 |
-| `POST` | `/{plugin}/restart` | 重载插件 |
-| `GET` | `/{plugin}/status-card` | 返回状态卡片（JSON，`data.image` 为 base64 data URL） |
-
-页面与 API 的调用方式（实测）：页面跑在受限 iframe 里，通过 `window.AstrBotPluginView.apiGet("status")` 让父窗口代发请求，实际落到
-`GET /api/v1/plugins/extensions/astrbot_plugin_t2i_service/status`（旧前缀 `/api/plug/...` 等价）。
-
 渲染端点（与上游契约一致，供 AstrBot 客户端调用）：
 
 - `POST /text2img/generate` — `html` 或 `tmpl` + `tmpldata` + `options`
 - `GET /text2img/data/{image_id}` — JSON 模式下取回图片
 - `GET /healthz` — 健康检查
 
-详见 [`docs/APIS.md`](docs/APIS.md)（AstrBot 插件 API 速查）与 [`docs/PAGES-API.md`](docs/PAGES-API.md)（插件页面 / 桥接）。
-
-## WebUI 页面
-
-插件自带一个状态页（`pages/t2i/index.html`），在 WebUI 的插件页面入口打开：实时展示服务与浏览器状态、Chromium 下载进度、并发与渲染统计，并提供「渲染测试」「应用端点」「重载插件」按钮。页面跟随 Dashboard 明暗主题，入口为 `#/plugin-view/astrbot_plugin_t2i_service/t2i`。
-
-![插件状态页](docs/assets/plugin-page.png)
+详见 [`docs/APIS.md`](docs/APIS.md)（渲染端点 API 速查）。
 
 ## 实测数据
 
@@ -166,12 +146,11 @@ AstrBot 的文转图能力默认走「远端端点」（`t2i_strategy: remote` +
 
 | 路径 | 职责 |
 | --- | --- |
-| `main.py` | AstrBot 插件入口：生命周期、4 个命令、7 个 Web API |
+| `main.py` | AstrBot 插件入口：生命周期、4 个命令 |
 | `t2i_plugin/` | 插件适配层：配置解析、Chromium 供给、内嵌 HTTP 服务、卡片渲染 |
 | `t2i_core/` | 移植自上游的渲染核心：Playwright 渲染、图片存储、指标 |
 | `service/main.py` | 独立服务模式入口（FastAPI，保留上游能力） |
-| `pages/t2i/` | WebUI 插件页面 |
-| `docs/` | 文档：`APIS.md`、`PAGES-API.md`、`ENV-REPORT.md`、`standalone/`（上游文档） |
+| `docs/` | 文档：`APIS.md`、`ENV-REPORT.md`、`standalone/`（上游文档） |
 | `tools/envlab/` | 容器化验证环境脚本 |
 
 ## 独立服务模式（可选）
@@ -202,7 +181,7 @@ AstrBot 官方镜像以 root 运行，保持 `render.no_sandbox=true`。
 Chromium 没装好时插件会把请求透传给 `server.fallback_endpoint`（默认官方公共端点 `https://t2i.rcfortress.site/text2img`，在境外，排队久了会返回 `render queue wait exceeded`；旧版本留下的已停用端点会在启动时自动换成本次默认值）。装好本地 Chromium 后就不再走它；也可以把 `fallback_endpoint` 改成自建服务地址，或关掉 `server.fallback_enabled`。
 
 **端口被占用**
-改 `server.port`，然后重新「应用端点」。
+改 `server.port`，然后重新打开 `endpoint.auto_configure`（或手动更新 `t2i_endpoint`）。
 
 **重启 AstrBot 后文转图报错**
 检查 `t2i_endpoint` 是否仍指向插件端口（插件启动后端口可能变化），`/t2i_status` 会提示。

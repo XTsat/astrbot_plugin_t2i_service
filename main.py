@@ -12,15 +12,11 @@ AstrBot 插件进程，用 aiohttp 暴露**完全一致**的 HTTP 契约，因�
     /t2i_status   查看服务/浏览器/端点状态
     /t2i_install  安装 Chromium；已装但缺系统库时改为补装系统依赖
     /t2i_test     渲染一张测试卡片，验证链路是否打通
-    /t2i_restart  重启内嵌 HTTP 服务并释放 Chromium
-
-WebUI 页面：AstrBot 插件页 →「文转图服务」。
-"""
+    /t2i_restart  重启内嵌 HTTP 服务并释放 Chromium"""
 
 from __future__ import annotations
 
 import asyncio
-import base64
 import sys
 import time
 from collections.abc import AsyncIterator
@@ -51,7 +47,6 @@ from astrbot.api.event import (  # noqa: E402
     filter,
 )
 from astrbot.api.star import Context, Star  # noqa: E402
-from astrbot.api.web import error_response, json_response  # noqa: E402
 from astrbot.core.utils.astrbot_path import (  # noqa: E402
     get_astrbot_plugin_data_path,
 )
@@ -69,7 +64,7 @@ from t2i_plugin.browser import (  # noqa: E402
     deps_install_available,
     playwright_pip_available,
 )
-from t2i_plugin.card import build_status_card, build_test_card  # noqa: E402
+from t2i_plugin.card import build_test_card  # noqa: E402
 from t2i_plugin.config import DEFAULT_FALLBACK_ENDPOINT, T2IConfig  # noqa: E402
 from t2i_plugin.server import T2IHttpServer  # noqa: E402
 
@@ -143,13 +138,12 @@ class T2IServicePlugin(Star):
         self._closing = False
         self._background_tasks: set[asyncio.Task] = set()
         self._cleanup_task: asyncio.Task | None = None
-        self._web_apis_registered = False
         self.loaded_at = time.time()
 
     # ------------------------------------------------------------ 生命周期
 
     async def initialize(self) -> None:
-        """插件启用时：注册 Web API、清理孤儿进程、启动内嵌服务。"""
+        """插件启用时：清理孤儿进程、启动内嵌服务。"""
         # 核心层默认走 loguru，日志会散在 t2i_core.* 名下；插件模式把 AstrBot
         # 的插件专属 logger（Star 自带的 logging.Logger，名字 astrbot.plugin.<name>）
         # 注入进去，渲染/清理日志才归到插件名下。不能用 astrbot.api.logger——
@@ -159,11 +153,6 @@ class T2IServicePlugin(Star):
         except Exception:  # pragma: no cover - 防御：注入失败不影响启动
             pass
         logger.info(f"[t2i] 插件初始化：数据目录 {self.data_dir}")
-        try:
-            self._register_web_apis()
-        except Exception as exc:  # pragma: no cover - 防御
-            logger.warning(f"[t2i] 注册 Web API 失败：{exc}")
-
         if self.settings.browser.cleanup_orphans:
             try:
                 self.browser_manager.cleanup_orphans()
@@ -394,23 +383,25 @@ class T2IServicePlugin(Star):
             return
         try:
             endpoint = await self._write_endpoint_to_core_config()
-            logger.info(
-                f"[t2i] 已把 AstrBot 文转图端点设置为 {endpoint}，并打开文本转图像输出"
-            )
+            if self.settings.endpoint.enable_t2i_output:
+                logger.info(f"[t2i] 已把 AstrBot 文转图端点设置为 {endpoint}，并打开文本转图像输出")
+            else:
+                logger.info(f"[t2i] 已把 AstrBot 文转图端点设置为 {endpoint}")
         except Exception as exc:
             logger.warning(
                 f"[t2i] 写入 AstrBot 文转图端点失败（可在 WebUI 手动设置）：{exc}"
             )
 
     async def _write_endpoint_to_core_config(self) -> str:
-        """把端点写进 AstrBot 主配置并打开总开关，返回写入的地址。"""
+        """把端点写进 AstrBot 主配置并按配置打开总开关，返回写入的地址。"""
         endpoint = self.settings.resolve_service_url()
         core_config = self.context.get_config()
         core_config["t2i_endpoint"] = endpoint
         core_config["t2i_strategy"] = "remote"
         # AstrBot 的「文本转图像输出」总开关关着时，t2i_endpoint 在它的配置页是隐藏项、
-        # 也不会被读取，只写地址等于没写；开这开关就是这个插件的用途，一并打开
-        core_config["t2i"] = True
+        # 也不会被读取，只写地址等于没写；是否连开关一起打开由单独的配置控制
+        if self.settings.endpoint.enable_t2i_output:
+            core_config["t2i"] = True
         await _save_config(core_config)
         return endpoint
 
@@ -457,6 +448,7 @@ class T2IServicePlugin(Star):
             },
             "endpoint": {
                 "auto_configure": self.settings.endpoint.auto_configure,
+                "enable_t2i_output": self.settings.endpoint.enable_t2i_output,
                 "target": self.settings.resolve_service_url(),
                 "astrbot_t2i_endpoint": self._read_core_config("t2i_endpoint"),
                 "astrbot_t2i_strategy": self._read_core_config("t2i_strategy"),
@@ -710,187 +702,6 @@ class T2IServicePlugin(Star):
         else:
             yield event.plain_result(f"❌ 重启失败：{message}")
 
-    # ------------------------------------------------------------- Web API
-
-    def _register_web_apis(self) -> None:
-        if self._web_apis_registered:
-            return
-        base = f"/{PLUGIN_NAME}"
-        self.context.register_web_api(
-            f"{base}/status", self.web_status, ["GET"], "文转图服务状态"
-        )
-        self.context.register_web_api(
-            f"{base}/install", self.web_install, ["POST"], "安装 Chromium"
-        )
-        self.context.register_web_api(
-            f"{base}/install/state",
-            self.web_install_state,
-            ["GET"],
-            "Chromium 安装进度",
-        )
-        self.context.register_web_api(
-            f"{base}/render-test", self.web_render_test, ["POST"], "渲染测试卡片"
-        )
-        self.context.register_web_api(
-            f"{base}/apply-endpoint",
-            self.web_apply_endpoint,
-            ["POST"],
-            "让 AstrBot 主程序使用本插件端点",
-        )
-        self.context.register_web_api(
-            f"{base}/restart", self.web_restart, ["POST"], "重启内嵌服务"
-        )
-        self.context.register_web_api(
-            f"{base}/status-card", self.web_status_card, ["GET"], "状态卡片图片"
-        )
-        self._web_apis_registered = True
-
-    async def web_status(self):
-        return json_response({"status": "ok", "data": self._status_payload()})
-
-    async def web_install(self):
-        if not playwright_pip_available():
-            return error_response(
-                "未安装 Python 包 playwright，请重装插件以自动安装依赖", status_code=400
-            )
-        manager = self.browser_manager
-        chromium = manager.find_chromium()
-        if chromium is not None:
-            missing = manager.missing_shared_libs()
-            if not missing:
-                return json_response(
-                    {
-                        "status": "ok",
-                        "data": {
-                            "already_installed": True,
-                            "chromium_path": str(chromium),
-                        },
-                    }
-                )
-            if not deps_install_available():
-                return error_response(
-                    "Chromium 缺少系统运行库（"
-                    + "、".join(missing)
-                    + "）；自动补装需要 root 与 apt-get/dnf，"
-                    "请手动执行 `playwright install-deps chromium`",
-                    status_code=400,
-                )
-            return json_response(
-                {
-                    "status": "ok",
-                    "data": {
-                        "started": manager.start_install_deps(),
-                        "mode": "deps",
-                        "missing_libs": missing,
-                    },
-                }
-            )
-        started = manager.start_install(
-            install_deps=self.settings.browser.auto_install_deps
-        )
-        return json_response(
-            {"status": "ok", "data": {"started": started, "mode": "install"}}
-        )
-
-    async def web_install_state(self):
-        manager = self.browser_manager
-        return json_response(
-            {
-                "status": "ok",
-                "data": {
-                    **manager.install_state.as_dict(),
-                    "installed": manager.is_installed(),
-                    "missing_libs": manager.missing_shared_libs(),
-                    "deps": manager.deps_state.as_dict(),
-                },
-            }
-        )
-
-    async def web_render_test(self):
-        payload = self._status_payload()
-        html = build_test_card(
-            quiet=False,
-            server_running=payload["server"]["running"],
-            endpoint=payload["server"]["endpoint"],
-            chromium_installed=payload["browser"]["installed"],
-            chromium_path=payload["browser"]["chromium_path"],
-            renderer_connected=payload["renderer"]["connected"],
-        )
-        started = time.perf_counter()
-        ok, detail = await self.server.render_probe(html)
-        elapsed = time.perf_counter() - started
-        if not ok:
-            return json_response(
-                {
-                    "status": "error",
-                    "message": f"{detail}{self._install_hint()}",
-                    "data": {"ok": False},
-                }
-            )
-        image = _read_as_data_url(detail)
-        if image is None:
-            return error_response("读取渲染结果失败", status_code=500)
-        return json_response(
-            {
-                "status": "ok",
-                "data": {
-                    "ok": True,
-                    "elapsed_ms": round(elapsed * 1000, 1),
-                    "image": image,
-                },
-            }
-        )
-
-    async def web_apply_endpoint(self):
-        try:
-            endpoint = await self._write_endpoint_to_core_config()
-        except Exception as exc:
-            return error_response(f"写入失败：{exc}", status_code=500)
-        return json_response(
-            {
-                "status": "ok",
-                "data": {
-                    "endpoint": endpoint,
-                    "strategy": "remote",
-                    "enabled": True,
-                    "note": "若 AstrBot 已缓存文转图策略，重启 AstrBot 后生效",
-                },
-            }
-        )
-
-    async def web_restart(self):
-        try:
-            await self.renderer.terminate()
-        except Exception as exc:  # pragma: no cover - 防御
-            logger.warning(f"[t2i] 关闭 Chromium 失败：{exc}")
-        if not self.settings.server.enabled:
-            return json_response(
-                {"status": "ok", "data": {"enabled": False, "running": False}}
-            )
-        ok, message = await self.server.restart()
-        return json_response(
-            {
-                "status": "ok" if ok else "error",
-                "message": message,
-                "data": {
-                    "running": self.server.running,
-                    "endpoint": self.server.endpoint,
-                },
-            }
-        )
-
-    async def web_status_card(self):
-        ok, detail = await self.server.render_probe(
-            build_status_card(self._status_payload())
-        )
-        if not ok:
-            return error_response(detail, status_code=503)
-        image = _read_as_data_url(detail)
-        if image is None:
-            return error_response("读取渲染结果失败", status_code=500)
-        return json_response({"status": "ok", "data": {"image": image}})
-
-
 
 def _plugin_version() -> str:
     """从 metadata.yaml 读插件版本（唯一版本源，见 AGENTS.md 7.1）。
@@ -917,13 +728,3 @@ async def _save_config(core_config) -> None:
         await save_async()
     else:  # pragma: no cover - 旧版 AstrBot 兼容
         core_config.save_config()
-
-
-def _read_as_data_url(path: str) -> str | None:
-    try:
-        raw = Path(path).read_bytes()
-    except OSError:
-        return None
-    suffix = Path(path).suffix.lower()
-    mime = "image/png" if suffix == ".png" else "image/jpeg"
-    return f"data:{mime};base64," + base64.b64encode(raw).decode()

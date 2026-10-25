@@ -28,6 +28,9 @@
 
 - 缺系统库自动补装（`browser.auto_install_deps`）默认值从关闭改为开启：检测到缺库时启动即补，正常环境不会触发。
 
+### 移除
+- **移除 WebUI 插件页面与配套的 7 个插件 Web API**：页面实际使用中不刷新、价值有限；状态查看与 Chromium 安装改用 `/t2i_status`、`/t2i_install` 等聊天命令完成。
+
 ## 1.0.0
 
 首个插件版本：以 [astrbot-t2i-service](https://github.com/AstrBotDevs/astrbot-t2i-service) 为基底，把文转图渲染服务移植为 AstrBot 进程内插件。
