@@ -32,13 +32,15 @@ _PLUGIN_DIR = Path(__file__).resolve().parent
 if str(_PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(_PLUGIN_DIR))
 
-# AstrBot 重载插件只清理 data.plugins.<plugin>.* 模块，而 t2i_plugin 是按顶层包名
-# 导入的，会残留在 sys.modules 里：不先清掉，重载后依旧跑旧代码，新增符号缺失时
-# 甚至直接 ImportError 让插件加载失败。
-# 只清 t2i_plugin：t2i_core 里是 Prometheus 注册表一类进程级单例，重新执行会产生
-# 重复的指标序列。
+# AstrBot 重载插件只清理 data.plugins.<plugin>.* 模块，而 t2i_plugin / t2i_core 是按
+# 顶层包名导入的，会残留在 sys.modules 里：不先清掉，重载后依旧跑旧代码（例如日志
+# 注入、错误处理的新逻辑不生效）。
+# 代价与对策：t2i_core.metrics 的 Prometheus 指标是进程级注册表单例，重新执行会
+# 重复注册——metrics._metric 已改为复用注册表里的同名指标，重载安全。
 for _stale in [
-    name for name in sys.modules if name.split(".", 1)[0] == "t2i_plugin"
+    name
+    for name in sys.modules
+    if name.split(".", 1)[0] in ("t2i_plugin", "t2i_core")
 ]:
     del sys.modules[_stale]
 
@@ -54,6 +56,10 @@ from astrbot.core.utils.astrbot_path import (  # noqa: E402
     get_astrbot_plugin_data_path,
 )
 
+from t2i_core.logger import (
+    reset_logger as reset_core_logger,  # noqa: E402
+    set_logger as set_core_logger,  # noqa: E402
+)
 from t2i_core.render import Text2ImgRender  # noqa: E402
 from t2i_core.util import cleanup_expired_files  # noqa: E402
 from t2i_plugin.browser import (  # noqa: E402
@@ -144,6 +150,14 @@ class T2IServicePlugin(Star):
 
     async def initialize(self) -> None:
         """插件启用时：注册 Web API、清理孤儿进程、启动内嵌服务。"""
+        # 核心层默认走 loguru，日志会散在 t2i_core.* 名下；插件模式把 AstrBot
+        # 的插件专属 logger（Star 自带的 logging.Logger，名字 astrbot.plugin.<name>）
+        # 注入进去，渲染/清理日志才归到插件名下。不能用 astrbot.api.logger——
+        # 那是 loguru 直连对象，绕过宿主的字段 enricher 会让 sink 缺 plugin_tag 报错。
+        try:
+            set_core_logger(self.logger)
+        except Exception:  # pragma: no cover - 防御：注入失败不影响启动
+            pass
         logger.info(f"[t2i] 插件初始化：数据目录 {self.data_dir}")
         try:
             self._register_web_apis()
@@ -192,6 +206,7 @@ class T2IServicePlugin(Star):
         for task in list(self._background_tasks):
             task.cancel()
         self._background_tasks.clear()
+        reset_core_logger()
         logger.info("[t2i] 插件已卸载")
 
     def _spawn(self, coro) -> asyncio.Task:

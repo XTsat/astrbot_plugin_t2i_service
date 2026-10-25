@@ -200,7 +200,7 @@ When the standalone service lives outside AstrBot, AstrBot's text-to-image API a
 
 **Disk usage** — Chromium ~200 MB in the plugin data dir; rendered images are kept 24 h and cleaned periodically.
 
-**Logs** — `[Plug]` prefix; successful renders do not log HTML content.
+**Logs** — render/cleanup service logs are grouped under the plugin's own logger, so filtering the AstrBot log by the plugin name or the `[t2i]` prefix shows render success/failure records; successful renders do not log HTML content.
 
 ## Development
 

@@ -2,7 +2,9 @@ import time
 import os
 import uuid
 import glob
-from loguru import logger
+from .logger import get_logger as _get_logger
+
+logger = _get_logger()
 from typing import Optional
 
 

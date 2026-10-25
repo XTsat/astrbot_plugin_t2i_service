@@ -23,7 +23,9 @@ from pathlib import Path
 
 from aiohttp import ClientError, ClientSession, ClientTimeout, web
 from jinja2.exceptions import SecurityError
-from loguru import logger
+from t2i_core.logger import get_logger as _get_logger
+
+logger = _get_logger()
 from pydantic import ValidationError
 
 from t2i_core.metrics import (

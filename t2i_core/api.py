@@ -8,7 +8,9 @@ import fastapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from jinja2.exceptions import SecurityError
-from loguru import logger
+from .logger import get_logger as _get_logger
+
+logger = _get_logger()
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 

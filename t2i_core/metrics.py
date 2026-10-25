@@ -49,6 +49,12 @@ class _DisabledMetric:
 def _metric(metric_type, *args, **kwargs):
     if not METRICS_ENABLED:
         return _DisabledMetric()
+    # 插件重载会重新执行本模块；Prometheus 全局注册表是进程级单例，
+    # 同名指标重复注册会抛 Duplicated timeseries，改为复用已有实例。
+    if REGISTRY is not None:
+        existing = REGISTRY._names_to_collectors.get(kwargs.get("name") or (args[0] if args else ""))
+        if existing is not None:
+            return existing
     return metric_type(*args, **kwargs)
 
 

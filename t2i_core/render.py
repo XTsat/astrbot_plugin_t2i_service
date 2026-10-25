@@ -6,7 +6,9 @@ import re
 import time
 
 from jinja2.sandbox import SandboxedEnvironment
-from loguru import logger
+from .logger import get_logger as _get_logger
+
+logger = _get_logger()
 from pydantic import BaseModel
 from typing import Literal
 from typing_extensions import TypedDict
