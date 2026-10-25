@@ -77,7 +77,8 @@ Configuration groups (see `_conf_schema.json`):
 | Key | Default | Description |
 | --- | --- | --- |
 | `current_service_url` | empty | Current plugin address, filled in by the plugin from the listen address and port (default `http://127.0.0.1:8999/text2img`); display only |
-| `auto_configure` | `false` | Write the endpoint into AstrBot's config on startup and turn on text-to-image output |
+| `auto_configure` | `false` | Write the endpoint into AstrBot's config on startup (with the `remote` strategy) |
+| `enable_t2i_output` | `true` | When auto-configure runs, also turn on AstrBot's text-to-image output switch (`t2i`); turn off to change the endpoint address only |
 | `service_url` | empty | Endpoint to write; auto-derived from the listen address when empty |
 
 ### `render`
@@ -102,7 +103,7 @@ Configuration groups (see `_conf_schema.json`):
 ## Wiring into AstrBot
 
 - **Find the address**: the `current_service_url` field under **Wire into AstrBot** is exactly what belongs in AstrBot's text-to-image API address (default `http://127.0.0.1:8999/text2img`, updated automatically when you change the listen address or port).
-- **Automatic**: enable `endpoint.auto_configure`, the plugin writes that endpoint, switches to the remote strategy, and turns on AstrBot's text-to-image output switch — nothing is rendered while that switch stays off.
+- **Automatic**: enable `endpoint.auto_configure`, the plugin writes that endpoint and switches to the remote strategy; AstrBot's text-to-image output switch (`t2i`) is controlled separately by `endpoint.enable_t2i_output` (on by default) — nothing is rendered while that switch stays off.
 - **Manual**: in AstrBot's `data/cmd_config.json`:
 
 ```jsonc

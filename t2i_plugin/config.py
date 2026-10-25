@@ -102,6 +102,8 @@ class EndpointConfig:
     """把 AstrBot 主程序的文转图请求指向本插件。"""
 
     auto_configure: bool = False
+    # 自动写入执行时是否顺带打开 AstrBot 的「文本转图像输出」总开关（t2i）
+    enable_t2i_output: bool = True
     service_url: str = ""
     # 由插件按 host/port 回写，仅在配置页展示「该填进 AstrBot 的地址」，
     # 不参与 resolve_service_url 解析——手改的值会被下次启动覆盖
@@ -172,6 +174,7 @@ class T2IConfig:
 
         endpoint = EndpointConfig(
             auto_configure=_as_bool(endpoint_raw.get("auto_configure"), False),
+            enable_t2i_output=_as_bool(endpoint_raw.get("enable_t2i_output"), True),
             service_url=_as_str(endpoint_raw.get("service_url")),
             current_service_url=_as_str(endpoint_raw.get("current_service_url")),
         )
