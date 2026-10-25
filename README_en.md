@@ -1,5 +1,5 @@
 <div align="center">
-<h1>T2I Service</h1>
+<h1>AstrBot T2I Service</h1>
 <p><strong>HTML/template to image rendering inside the AstrBot process, ready to serve as AstrBot's text-to-image endpoint with no extra container; includes Chromium download, status detection and orphan-process cleanup.</strong></p>
 <p><sub>text-to-image &nbsp;&nbsp; t2i &nbsp;&nbsp; rendering</sub></p>
 <p><a href="README.md">中文</a> &nbsp;/&nbsp; <strong>English</strong></p>

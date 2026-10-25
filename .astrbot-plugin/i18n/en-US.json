@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "display_name": "Text-to-Image Service",
-    "desc": "HTML/template to image rendering inside the AstrBot process, ready to be used as AstrBot's text-to-image endpoint without an extra container.",
+    "display_name": "AstrBot Text-to-Image Service",
+    "desc": "HTML/template to image rendering inside the AstrBot process, ready to be used as AstrBot's text-to-image endpoint without an extra container. Built on the official text-to-image service with an identical interface and behavior.",
     "short_desc": "In-process text-to-image render service"
   }
 }

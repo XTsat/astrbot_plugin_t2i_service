@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "display_name": "文转图服务",
-    "desc": "在 AstrBot 进程内提供 HTML/模板转图片渲染服务，可直接作为 AstrBot 的文转图端点，无需单独部署容器。",
+    "display_name": "AstrBot 文转图服务",
+    "desc": "在 AstrBot 进程内提供 HTML/模板转图片渲染，可直接作为 AstrBot 的文转图端点，无需单独部署容器。基于官方文转图服务制作，接口与行为保持一致。",
     "short_desc": "AstrBot 内置文转图渲染服务"
   }
 }

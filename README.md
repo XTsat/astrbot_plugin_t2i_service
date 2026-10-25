@@ -1,6 +1,6 @@
 <div align="center">
-<h1>文转图服务 (T2I Service)</h1>
-<p><strong>在 AstrBot 进程内提供 HTML/模板转图片渲染服务，可作为 AstrBot 的文转图端点，无需再单独部署容器；自带 Chromium 下载、状态检测与孤儿进程清理。</strong></p>
+<h1>AstrBot 文转图服务 (T2I Service)</h1>
+<p><strong>在 AstrBot 进程内提供 HTML/模板转图片渲染服务，可作为 AstrBot 的文转图端点，无需再单独部署容器</strong></p>
 <p><sub>文转图 &nbsp;&nbsp; t2i &nbsp;&nbsp; 渲染 &nbsp;&nbsp; text2image</sub></p>
 <p><strong>中文</strong> &nbsp;/&nbsp; <a href="README_en.md">English</a></p>
 </div>
