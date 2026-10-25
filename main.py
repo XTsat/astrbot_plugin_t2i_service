@@ -47,7 +47,6 @@ from t2i_plugin.config import T2IConfig  # noqa: E402
 from t2i_plugin.server import T2IHttpServer  # noqa: E402
 
 PLUGIN_NAME = "astrbot_plugin_t2i_service"
-PLUGIN_VERSION = "0.1.0"
 
 INSTALL_PROGRESS_INTERVAL = 20  # 安装进度提示间隔（秒）
 INSTALL_PROGRESS_MAX = 8  # 安装进度提示条数上限
@@ -221,7 +220,7 @@ class T2IServicePlugin(Star):
     def _status_payload(self) -> dict:
         return {
             "plugin_name": PLUGIN_NAME,
-            "plugin_version": PLUGIN_VERSION,
+            "plugin_version": _plugin_version(),
             "plugin_uptime": round(time.time() - self.loaded_at, 1),
             "server": {
                 "enabled": self.settings.server.enabled,
@@ -537,6 +536,24 @@ class T2IServicePlugin(Star):
             return error_response("读取渲染结果失败", status_code=500)
         return json_response({"status": "ok", "data": {"image": image}})
 
+
+
+def _plugin_version() -> str:
+    """从 metadata.yaml 读插件版本（唯一版本源，见 AGENTS.md 7.1）。
+
+    不在代码里手写版本常量：手写值会与 metadata.yaml 漂移，
+    状态卡片和 WebUI 页面就会显示错误版本号。
+    """
+    try:
+        import yaml
+
+        data = yaml.safe_load(
+            (_PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
+        )
+    except (OSError, ImportError, ValueError):
+        return ""
+    version = data.get("version") if isinstance(data, dict) else None
+    return str(version) if version else ""
 
 
 async def _save_config(core_config) -> None:
