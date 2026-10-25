@@ -1,14 +1,39 @@
+from __future__ import annotations
+
+import asyncio
 import os
 import re
 import time
 
 from jinja2.sandbox import SandboxedEnvironment
 from loguru import logger
-from playwright._impl._errors import TargetClosedError
-from playwright.async_api import Browser, BrowserContext, Playwright, async_playwright
 from pydantic import BaseModel
 from typing import Literal
 from typing_extensions import TypedDict
+
+try:  # playwright 未安装时仍然允许插件加载并提示用户安装
+    from playwright._impl._errors import TargetClosedError
+    from playwright.async_api import (
+        Browser,
+        BrowserContext,
+        Playwright,
+        async_playwright,
+    )
+
+    PLAYWRIGHT_AVAILABLE = True
+except ModuleNotFoundError:  # pragma: no cover - 取决于运行环境
+    Browser = BrowserContext = Playwright = object  # type: ignore[misc,assignment]
+    async_playwright = None  # type: ignore[assignment]
+
+    class TargetClosedError(Exception):  # type: ignore[no-redef]
+        """playwright 缺失时的占位异常。"""
+
+    PLAYWRIGHT_AVAILABLE = False
+
+
+class PlaywrightNotInstalledError(RuntimeError):
+    """Python 包 playwright 或 Chromium 浏览器不可用。"""
+
 
 from .metrics import (
     BROWSER_CONNECTED,
@@ -91,11 +116,60 @@ class Text2ImgRender:
         "ultra": 1.8,
     }
 
-    def __init__(self):
+    def __init__(
+        self,
+        data_dir: str = "data",
+        browsers_path: str | None = None,
+        no_sandbox: bool = False,
+        concurrency: int = 2,
+        executable_path: str | None = None,
+        launch_args: list[str] | None = None,
+    ):
+        """
+        Args:
+            data_dir: 渲染中间产物（html/图片）存放目录。
+            browsers_path: Chromium 安装目录，会写入 ``PLAYWRIGHT_BROWSERS_PATH``。
+                必须在 Playwright 首次启动前设置。
+            no_sandbox: 以 ``--no-sandbox`` 启动 Chromium（容器内 root 用户必需）。
+            concurrency: 同时进行的截图数量上限。
+            executable_path: 自定义 Chromium 可执行文件路径。
+            launch_args: 追加的 Chromium 启动参数。
+        """
         self.playwright: Playwright | None = None
         self.browser: Browser | None = None
         # Context pool: {"normal": context, "high": context, "ultra": context}
         self.contexts: dict[str, BrowserContext] = {}
+        self.data_dir = data_dir
+        self.browsers_path = browsers_path
+        self.no_sandbox = no_sandbox
+        self.executable_path = executable_path
+        self.launch_args = list(launch_args or [])
+        self._last_used = time.monotonic()
+        self._sem = asyncio.Semaphore(max(1, int(concurrency)))
+
+        if browsers_path:
+            # Playwright 在启动 driver 时读取该环境变量，必须早于 launch 设置。
+            os.environ["PLAYWRIGHT_BROWSERS_PATH"] = browsers_path
+
+    @property
+    def last_used(self) -> float:
+        """最近一次使用渲染器的时间（单调时钟）。"""
+        return self._last_used
+
+    def is_browser_connected(self) -> bool:
+        """Chromium 是否处于已连接状态。"""
+        return self.browser is not None and bool(self.browser.is_connected())
+
+    def _launch_options(self) -> dict:
+        args = list(self.launch_args)
+        if self.no_sandbox and "--no-sandbox" not in args:
+            args.append("--no-sandbox")
+        options: dict = {"headless": True}
+        if args:
+            options["args"] = args
+        if self.executable_path:
+            options["executable_path"] = self.executable_path
+        return options
 
     async def _ensure_context(self, level: str = "normal") -> BrowserContext:
         """Ensure that Playwright, Browser and BrowserContext are initialized.
@@ -106,7 +180,16 @@ class Text2ImgRender:
 
         Returns:
             The BrowserContext for the specified level.
+
+        Raises:
+            PlaywrightNotInstalledError: playwright 未安装。
         """
+        if not PLAYWRIGHT_AVAILABLE:
+            raise PlaywrightNotInstalledError(
+                "未安装 Python 包 playwright，请在 AstrBot 环境执行 "
+                "`pip install playwright`（或重装本插件以自动安装依赖）。"
+            )
+
         if self.playwright is None:
             self.playwright = await async_playwright().start()
 
@@ -117,9 +200,15 @@ class Text2ImgRender:
                     await self.browser.close()
                 except Exception as e:
                     logger.debug(f"Close old browser failed: {e}")
-            self.browser = await self.playwright.chromium.launch(headless=True)
+            self.browser = await self.playwright.chromium.launch(
+                **self._launch_options()
+            )
             BROWSER_STARTS.inc()
             BROWSER_CONNECTED.set(1)
+            logger.info(
+                f"Chromium launched (no_sandbox={self.no_sandbox}, "
+                f"executable={self.executable_path or 'playwright-bundled'})"
+            )
 
         # ensure context available for the specified level
         if level not in self.contexts:
@@ -141,7 +230,7 @@ class Text2ImgRender:
 
     async def from_html(self, html: str) -> tuple[str, str]:
         html_file_path, abs_path = generate_data_path(
-            suffix="html", namespace="rendered"
+            suffix="html", namespace="rendered", data_dir=self.data_dir
         )
         with open(html_file_path, "w", encoding="utf-8") as f:
             f.write(html)
@@ -222,7 +311,38 @@ class Text2ImgRender:
                 logger.debug(f"Stop Playwright failed: {e}")
             self.playwright = None
 
+    async def close_idle(self, idle_seconds: float) -> bool:
+        """闲置超时后释放 Chromium，回收内存。
+
+        Args:
+            idle_seconds: 空闲秒数阈值；<=0 表示不回收。
+
+        Returns:
+            bool: 本次是否真的关闭了浏览器。
+        """
+        if idle_seconds <= 0:
+            return False
+        if self.browser is None and self.playwright is None:
+            return False
+        if time.monotonic() - self._last_used < idle_seconds:
+            return False
+        if self.browser is not None or self.playwright is not None:
+            logger.info(f"Idle for {idle_seconds:.0f}s, releasing Chromium to free memory")
+            await self.terminate()
+            return True
+        return False
+
     async def html2pic(
+        self, html_file_path: str, screenshot_options: ScreenshotOptions
+    ) -> str:
+        """截图入口：并发限流 + 空闲时间戳更新。"""
+        async with self._sem:
+            self._last_used = time.monotonic()
+            result = await self._screenshot(html_file_path, screenshot_options)
+            self._last_used = time.monotonic()
+            return result
+
+    async def _screenshot(
         self, html_file_path: str, screenshot_options: ScreenshotOptions
     ) -> str:
         # Determine which context to use based on device_scale_factor_level
@@ -234,7 +354,9 @@ class Text2ImgRender:
         RENDER_IN_PROGRESS.inc()
         try:
             context = await self._ensure_context(level)
-            result_path, _ = generate_data_path(suffix=suffix, namespace="rendered")
+            result_path, _ = generate_data_path(
+                suffix=suffix, namespace="rendered", data_dir=self.data_dir
+            )
 
             try:
                 page = await context.new_page()

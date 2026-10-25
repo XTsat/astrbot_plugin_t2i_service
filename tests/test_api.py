@@ -2,8 +2,15 @@ import asyncio
 import json
 from pathlib import Path
 
-from src import api
-from src.storage import StoredImage
+import pytest
+
+
+# 这些是独立服务（FastAPI/存储后端）的测试：缺少对应依赖时整体跳过，
+# 插件模式（AstrBot 环境）不需要它们。
+pytest.importorskip("fastapi")
+pytest.importorskip("prometheus_client")
+from t2i_core import api
+from t2i_core.storage import StoredImage
 
 
 class FakeRenderer:

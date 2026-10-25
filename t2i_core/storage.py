@@ -5,9 +5,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-import boto3
-from botocore.config import Config
-from botocore.exceptions import ClientError
+try:  # boto3 仅 S3/R2 后端需要，插件模式默认用本地存储
+    import boto3
+    from botocore.config import Config
+    from botocore.exceptions import ClientError
+
+    BOTO3_AVAILABLE = True
+except ModuleNotFoundError:  # pragma: no cover - 取决于运行环境
+    boto3 = None  # type: ignore[assignment]
+    Config = None  # type: ignore[assignment]
+
+    class ClientError(Exception):  # type: ignore[no-redef]
+        """boto3 缺失时的占位异常。"""
+
+    BOTO3_AVAILABLE = False
 
 # Keep MIME resolution deterministic in minimal container images.
 mimetypes.add_type("image/png", ".png")
@@ -156,6 +167,10 @@ def create_image_storage() -> ImageStorage:
     if backend == "local":
         return LocalImageStorage()
     if backend in {"s3", "r2"}:
+        if not BOTO3_AVAILABLE:
+            raise ValueError(
+                "STORAGE_BACKEND=s3/r2 需要安装 boto3（pip install boto3）"
+            )
         endpoint_url = os.getenv("S3_ENDPOINT_URL") or None
         if backend == "r2" and endpoint_url is None:
             raise ValueError("S3_ENDPOINT_URL is required when STORAGE_BACKEND=r2")

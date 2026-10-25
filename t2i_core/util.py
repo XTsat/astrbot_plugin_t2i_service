@@ -69,10 +69,19 @@ def cleanup_expired_files(
     return cleanup_count
 
 
-def generate_data_path(suffix: str = "html", namespace: str = "default") -> tuple[str, str]:
-    os.makedirs("data", exist_ok=True)
+def generate_data_path(
+    suffix: str = "html", namespace: str = "default", data_dir: str = "data"
+) -> tuple[str, str]:
+    """生成 data 目录下的文件路径。
+
+    Args:
+        suffix: 文件后缀（不含点）。
+        namespace: 文件名前缀，便于区分用途。
+        data_dir: 数据目录；插件模式传入插件数据目录，独立服务模式默认为 ./data。
+    """
+    os.makedirs(data_dir, exist_ok=True)
     # 同时返回相对和绝对路径
     filename = f"{namespace}_{int(time.time())}_{uuid.uuid4().hex[:8]}.{suffix}"
-    return os.path.join("data", filename), os.path.abspath(
-        os.path.join("data", filename)
+    return os.path.join(data_dir, filename), os.path.abspath(
+        os.path.join(data_dir, filename)
     )

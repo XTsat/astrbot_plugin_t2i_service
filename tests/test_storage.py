@@ -3,10 +3,14 @@ import io
 from pathlib import Path
 
 import pytest
+
+# 这些是独立服务（FastAPI/存储后端）的测试：缺少对应依赖时整体跳过，
+# 插件模式（AstrBot 环境）不需要它们。
+pytest.importorskip("botocore")
 from botocore.exceptions import ClientError
 
-from src import storage as storage_module
-from src.storage import LocalImageStorage, S3ImageStorage, create_image_storage
+from t2i_core import storage as storage_module
+from t2i_core.storage import LocalImageStorage, S3ImageStorage, create_image_storage
 
 
 class FakeS3Client:

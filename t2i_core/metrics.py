@@ -4,8 +4,16 @@ import os
 from collections.abc import Iterable
 from pathlib import Path
 
-from prometheus_client import Counter, Gauge, Histogram, REGISTRY
-from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily
+try:  # prometheus-client 是可选的：AstrBot 插件模式默认不安装它
+    from prometheus_client import REGISTRY, Counter, Gauge, Histogram
+    from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily
+
+    PROMETHEUS_AVAILABLE = True
+except ModuleNotFoundError:  # pragma: no cover - 取决于运行环境
+    REGISTRY = None  # type: ignore[assignment]
+    Counter = Gauge = Histogram = None  # type: ignore[assignment]
+    CounterMetricFamily = GaugeMetricFamily = None  # type: ignore[assignment]
+    PROMETHEUS_AVAILABLE = False
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -15,7 +23,8 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-METRICS_ENABLED = _env_flag("METRICS_ENABLED")
+# 缺少 prometheus-client 时强制关闭指标，所有埋点退化为 no-op。
+METRICS_ENABLED = PROMETHEUS_AVAILABLE and _env_flag("METRICS_ENABLED")
 
 
 class _DisabledMetric:
