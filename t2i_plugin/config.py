@@ -103,6 +103,9 @@ class EndpointConfig:
 
     auto_configure: bool = False
     service_url: str = ""
+    # 由插件按 host/port 回写，仅在配置页展示「该填进 AstrBot 的地址」，
+    # 不参与 resolve_service_url 解析——手改的值会被下次启动覆盖
+    current_service_url: str = ""
 
 
 @dataclass
@@ -170,6 +173,7 @@ class T2IConfig:
         endpoint = EndpointConfig(
             auto_configure=_as_bool(endpoint_raw.get("auto_configure"), False),
             service_url=_as_str(endpoint_raw.get("service_url")),
+            current_service_url=_as_str(endpoint_raw.get("current_service_url")),
         )
 
         storage = StorageConfig(

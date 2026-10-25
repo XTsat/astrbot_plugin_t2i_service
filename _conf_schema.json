@@ -158,16 +158,22 @@
     "type": "object",
     "hint": "决定是否自动把 AstrBot 主程序的文转图端点改为本插件。",
     "items": {
+      "current_service_url": {
+        "description": "本插件当前地址（应填入文转图 API 地址）",
+        "type": "string",
+        "hint": "由插件按上面的监听地址与监听端口自动生成，默认是 http://127.0.0.1:8999/text2img。把它填进 AstrBot 主配置的「文本转图像服务 API 地址」（t2i_endpoint）即可；打开下面的自动写入开关后无需手工填。本字段仅供查看，手动修改会在下次启动时被覆盖。",
+        "default": ""
+      },
       "auto_configure": {
         "description": "启动时自动写入 AstrBot 文转图端点",
         "type": "bool",
-        "hint": "打开后插件会读取 AstrBot 配置，写入 t2i_endpoint 与 t2i_strategy=remote（300 秒空闲探测策略），重启 AstrBot 生效。",
+        "hint": "打开后插件会读取 AstrBot 配置，把它写成上面展示的地址（默认 http://127.0.0.1:8999/text2img）并将 t2i_strategy 设为 remote（300 秒空闲探测策略），重启 AstrBot 生效。",
         "default": false
       },
       "service_url": {
         "description": "写入的端点地址（留空=按监听地址自动生成）",
         "type": "string",
-        "hint": "仅在 AstrBot 通过别的主机名/端口访问本插件时才需要填写，需包含 /text2img。",
+        "hint": "仅在 AstrBot 通过别的主机名/端口访问本插件时才需要填写，需包含 /text2img；留空时自动生成，默认 http://127.0.0.1:8999/text2img（改端口后随之变化，具体值见上面的「本插件当前地址」）。",
         "default": ""
       }
     }

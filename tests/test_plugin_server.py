@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import socket
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from t2i_core.render import ScreenshotOptions
+from t2i_plugin import server as t2i_server
 from t2i_plugin.config import T2IConfig
 from t2i_plugin.server import T2IHttpServer, normalize_render_url
 
@@ -442,3 +444,92 @@ def test_json_payload_roundtrip_shape():
         "options": {"full_page": True, "type": "jpeg", "quality": 40},
     }
     assert json.loads(json.dumps(post_data)) == post_data
+
+
+# -------------------------------------------------- 插件重载后的端口接管
+
+
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _server_on(tmp_path: Path, port: int) -> T2IHttpServer:
+    config = T2IConfig.from_raw(
+        {"server": {"host": "127.0.0.1", "port": port, "fallback_enabled": False}}
+    )
+    return T2IHttpServer(
+        config=config,
+        renderer=FakeRenderer(tmp_path),
+        data_dir=str(tmp_path),
+        browser_manager=FakeBrowserManager(),
+    )
+
+
+async def test_new_instance_takes_over_port_held_by_previous_load(tmp_path: Path):
+    """AstrBot 连续加载两次插件时，新实例要停掉旧监听再绑定，而不是报端口占用。"""
+    port = _free_port()
+    previous = _server_on(tmp_path, port)
+    ok, detail = await previous.start()
+    assert ok, detail
+
+    current = _server_on(tmp_path, port)
+    ok, detail = await current.start()
+    try:
+        assert ok, detail
+        assert current.running
+        assert not previous.running
+    finally:
+        await current.stop()
+
+
+async def test_stop_unregisters_so_port_can_be_reused(tmp_path: Path):
+    port = _free_port()
+    server = _server_on(tmp_path, port)
+    assert await server.start()
+    await server.stop()
+
+    again = _server_on(tmp_path, port)
+    ok, detail = await again.start()
+    try:
+        assert ok, detail
+    finally:
+        await again.stop()
+
+
+async def test_port_held_by_foreign_program_reports_actionable_error(
+    tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr(t2i_server, "PORT_BIND_RETRY_SECONDS", 0.2)
+    port = _free_port()
+    blocker = socket.socket()
+    blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    blocker.bind(("127.0.0.1", port))
+    blocker.listen(1)
+    try:
+        server = _server_on(tmp_path, port)
+        ok, detail = await server.start()
+        assert ok is False
+        assert "其它程序" in detail
+        assert not server.running
+    finally:
+        blocker.close()
+
+
+async def test_port_held_by_previous_instance_is_reported_as_own_service(
+    tmp_path: Path, monkeypatch
+):
+    """旧版本加载的实例占着端口又没登记时无法接管，要明确告出「是本插件自己」。"""
+    monkeypatch.setattr(t2i_server, "PORT_BIND_RETRY_SECONDS", 0.3)
+    port = _free_port()
+    zombie = _server_on(tmp_path, port)
+    assert await zombie.start()
+    t2i_server._server_registry().clear()
+    try:
+        server = _server_on(tmp_path, port)
+        ok, detail = await server.start()
+        assert ok is False
+        assert "由上一次加载的插件实例占用" in detail
+    finally:
+        await zombie.stop()

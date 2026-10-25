@@ -32,11 +32,13 @@ _PLUGIN_DIR = Path(__file__).resolve().parent
 if str(_PLUGIN_DIR) not in sys.path:
     sys.path.insert(0, str(_PLUGIN_DIR))
 
-# AstrBot 重载插件只清理 data.plugins.<plugin>.* 模块，而 t2i_plugin / t2i_core
-# 是按顶层包名导入的，会残留在 sys.modules 里：不先清掉，重载后依旧跑旧代码，
-# 新增符号缺失时甚至直接 ImportError 让插件加载失败。
+# AstrBot 重载插件只清理 data.plugins.<plugin>.* 模块，而 t2i_plugin 是按顶层包名
+# 导入的，会残留在 sys.modules 里：不先清掉，重载后依旧跑旧代码，新增符号缺失时
+# 甚至直接 ImportError 让插件加载失败。
+# 只清 t2i_plugin：t2i_core 里是 Prometheus 注册表一类进程级单例，重新执行会产生
+# 重复的指标序列。
 for _stale in [
-    name for name in sys.modules if name.split(".", 1)[0] in {"t2i_plugin", "t2i_core"}
+    name for name in sys.modules if name.split(".", 1)[0] == "t2i_plugin"
 ]:
     del sys.modules[_stale]
 
@@ -57,6 +59,7 @@ from t2i_core.util import cleanup_expired_files  # noqa: E402
 from t2i_plugin.browser import (  # noqa: E402
     DONE,
     BrowserManager,
+    InstallState,
     deps_install_available,
     playwright_pip_available,
 )
@@ -167,6 +170,7 @@ class T2IServicePlugin(Star):
             logger.info("[t2i] 内嵌渲染服务未启用（server.enabled = false）")
 
         await self._migrate_legacy_fallback_endpoint()
+        await self._sync_service_url_field()
         self._spawn(self._handle_download_switch())
         self._cleanup_task = asyncio.create_task(self._periodic_maintenance())
 
@@ -236,6 +240,17 @@ class T2IServicePlugin(Star):
         await self._update_plugin_config(
             {"server": {"fallback_endpoint": DEFAULT_FALLBACK_ENDPOINT}}
         )
+
+    async def _sync_service_url_field(self) -> None:
+        """把实际生效的端点地址回写到配置页的「本插件当前地址」。
+
+        「写入的端点地址」默认留空时，用户在配置页看不到插件到底会写入什么，
+        只能自己按 host/port 拼；这里把算好的地址显式回写，方便直接抄进
+        AstrBot 的「文本转图像服务 API 地址」。该字段只用于展示。
+        """
+        url = self.settings.resolve_service_url()
+        self.settings.endpoint.current_service_url = url
+        await self._update_plugin_config({"endpoint": {"current_service_url": url}})
 
     async def _handle_download_switch(self) -> None:
         """处理配置页的「下载 Chromium」开关。
@@ -311,10 +326,11 @@ class T2IServicePlugin(Star):
     async def _update_plugin_config(
         self, changes: dict[str, dict[str, object]]
     ) -> None:
-        """把少量状态回写到插件自己的配置文件（仅一处分：下载开关）。
+        """把少量状态回写到插件自己的配置文件。
 
-        配置页没有按钮控件，只能用开关 + 保存触发动作，因此需要把开关收回、
-        把浏览器就绪状态反馈给配置页；除此之外插件不写自己的配置。
+        配置页没有按钮与只读文本控件，只能靠开关 + 保存触发动作、靠字段回写
+        展示状态，因此这里集中处理三类回写：下载开关与浏览器就绪状态、备用
+        端点迁移、以及供展示用的本插件当前地址。除此之外插件不写自己的配置。
         """
         raw = self._raw_config
         if not isinstance(raw, dict):
@@ -491,6 +507,44 @@ class T2IServicePlugin(Star):
             return "install"
         return "deps" if manager.missing_shared_libs() else "none"
 
+    def _install_progress_text(self, state_name: str) -> str:
+        """任务已在跑时回报当前进度，而不是只丢一句「已有任务在进行中」。"""
+        state = getattr(self.browser_manager, state_name)
+        label = "补装系统依赖" if state_name == "deps_state" else "安装 Chromium"
+        return (
+            f"已有任务在进行：正在{label}，已用时 {state.elapsed:.0f}s｜{state.message}\n"
+            "继续为你推送进度…"
+        )
+
+    def _install_result_text(self, state: InstallState, state_name: str) -> str:
+        if state.status != DONE:
+            return f"❌ 安装未成功：{state.message}"
+        if state_name == "deps_state":
+            return f"✅ {state.message}\n可以发送 /t2i_test 验证渲染效果。"
+        return (
+            f"✅ {state.message}\n浏览器路径：{self.browser_manager.find_chromium()}\n"
+            "可以发送 /t2i_test 验证渲染效果。"
+        )
+
+    def _install_hint(self) -> str:
+        """渲染失败时补一句「现在能做什么」：正在补装就给进度，否则给下一步动作。"""
+        manager = self.browser_manager
+        if manager.deps_state.running:
+            return (
+                f"\n\n系统依赖正在补装（已用时 {manager.deps_state.elapsed:.0f}s）："
+                f"{manager.deps_state.message}\n补装完成后再试一次即可。"
+            )
+        if manager.install_state.running:
+            return f"\n\nChromium 正在安装（已用时 {manager.install_state.elapsed:.0f}s），完成后重试。"
+        if manager.is_installed() and manager.missing_shared_libs():
+            if deps_install_available():
+                return "\n\n可发送 /t2i_install 自动补装系统依赖。"
+            return (
+                "\n\n补装需要 AstrBot 进程为 root 且容器内有 apt-get/dnf；"
+                "也可手动执行 `playwright install-deps chromium`。"
+            )
+        return ""
+
     async def _follow_install(
         self, event: AstrMessageEvent, state_name: str
     ) -> AsyncIterator[MessageEventResult]:
@@ -533,7 +587,15 @@ class T2IServicePlugin(Star):
             return
         manager = self.browser_manager
         if manager.install_state.running or manager.deps_state.running:
-            yield event.plain_result("已有安装任务在进行中，可用 /t2i_status 查看进度。")
+            running_state = "deps_state" if manager.deps_state.running else "install_state"
+            yield event.plain_result(self._install_progress_text(running_state))
+            async for progress in self._follow_install(event, running_state):
+                yield progress
+            yield event.plain_result(
+                self._install_result_text(
+                    getattr(manager, running_state), running_state
+                )
+            )
             return
 
         plan = self._install_plan()
@@ -572,15 +634,9 @@ class T2IServicePlugin(Star):
             yield progress
 
         state = getattr(manager, state_name)
-        if state.status == "done":
-            yield event.plain_result(
-                f"✅ {state.message}\n浏览器路径：{manager.find_chromium()}\n"
-                "可以发送 /t2i_test 验证渲染效果。"
-            )
-            if state_name == "install_state":
-                await self._apply_endpoint_config()
-        else:
-            yield event.plain_result(f"❌ 安装未成功：{state.message}")
+        if state.status == DONE and state_name == "install_state":
+            await self._apply_endpoint_config()
+        yield event.plain_result(self._install_result_text(state, state_name))
 
     @filter.command("t2i_test")
     async def cmd_test(self, event: AstrMessageEvent):
@@ -601,7 +657,7 @@ class T2IServicePlugin(Star):
             yield event.image_result(detail)
             yield event.plain_result(f"渲染成功，用时 {elapsed * 1000:.0f} ms")
         else:
-            yield event.plain_result(f"渲染失败：{detail}")
+            yield event.plain_result(f"渲染失败：{detail}{self._install_hint()}")
 
     @filter.command("t2i_restart")
     async def cmd_restart(self, event: AstrMessageEvent):
@@ -732,7 +788,11 @@ class T2IServicePlugin(Star):
         elapsed = time.perf_counter() - started
         if not ok:
             return json_response(
-                {"status": "error", "message": detail, "data": {"ok": False}}
+                {
+                    "status": "error",
+                    "message": f"{detail}{self._install_hint()}",
+                    "data": {"ok": False},
+                }
             )
         image = _read_as_data_url(detail)
         if image is None:

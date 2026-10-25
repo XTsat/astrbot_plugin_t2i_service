@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
 import json
 import secrets
 import time
@@ -80,6 +81,24 @@ def normalize_render_url(url: str) -> str:
     return url
 
 
+SERVER_REGISTRY_ATTR = "__t2i_service_servers__"
+PORT_BIND_RETRY_SECONDS = 6.0
+PORT_BIND_RETRY_INTERVAL = 0.5
+
+
+def _server_registry() -> dict[str, "T2IHttpServer"]:
+    """进程级服务注册表，按 ``host:port`` 记住当前活着的实例。
+
+    注册表挂在 ``builtins`` 上而不是模块全局：AstrBot 重载插件时本模块会被重新
+    导入并丢弃旧模块对象，只有进程级容器才能让新实例看到上一次加载留下的监听。
+    """
+    registry = getattr(builtins, SERVER_REGISTRY_ATTR, None)
+    if not isinstance(registry, dict):
+        registry = {}
+        setattr(builtins, SERVER_REGISTRY_ATTR, registry)
+    return registry
+
+
 class T2IHttpServer:
     """把渲染器、存储以 HTTP 接口暴露给 AstrBot 主程序。"""
 
@@ -124,28 +143,82 @@ class T2IHttpServer:
         app.router.add_get("/healthz", self.handle_health)
         return app
 
+    def _address_key(self) -> str:
+        return f"{self.config.server.host}:{self.config.server.port}"
+
+    async def _listener_is_own_service(self) -> bool:
+        """端口被占时探一下对端是不是本插件自己的服务（上一次加载遗留的实例）。"""
+        host = self.config.server.host
+        probe_host = host if host and host != "0.0.0.0" else "127.0.0.1"
+        url = f"http://{probe_host}:{self.config.server.port}/healthz"
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=2)) as session:
+                async with session.get(url) as resp:
+                    if resp.status != 200:
+                        return False
+                    payload = await resp.json(content_type=None)
+        except (ClientError, asyncio.TimeoutError, OSError, ValueError):
+            return False
+        if not isinstance(payload, dict):
+            return False
+        return payload.get("service") == "astrbot_plugin_t2i_service"
+
+    async def _release_stale_listener(self) -> None:
+        """停掉上一次插件加载遗留的同端口实例。
+
+        AstrBot 连续加载两次插件时，先加载的实例仍占着端口：新实例绑定失败、状态里
+        显示「服务未运行」，而对外服务其实由那份已经没有引用的实例提供。
+        """
+        key = self._address_key()
+        stale = _server_registry().pop(key, None)
+        if stale is None or stale is self:
+            return
+        try:
+            await stale.stop()
+            logger.warning(f"[t2i] 已接管上次加载遗留的同端口服务：{key}")
+        except (OSError, RuntimeError) as exc:
+            logger.warning(f"[t2i] 停用遗留服务失败：{exc}")
+
     async def start(self) -> tuple[bool, str]:
         """启动服务。返回 (是否成功, 说明)。"""
         if self.running:
             return True, f"服务已在运行：{self.endpoint}"
 
-        runner = web.AppRunner(self._build_app(), access_log=None)
-        await runner.setup()
-        site = web.TCPSite(
-            runner, self.config.server.host, self.config.server.port
-        )
-        try:
-            await site.start()
-        except OSError as exc:
-            await runner.cleanup()
-            self.last_error = f"端口 {self.config.server.port} 启动失败：{exc}"
-            logger.error(f"[t2i] {self.last_error}")
-            return False, self.last_error
+        await self._release_stale_listener()
+        deadline = time.monotonic() + PORT_BIND_RETRY_SECONDS
+        while True:
+            runner = web.AppRunner(self._build_app(), access_log=None)
+            await runner.setup()
+            site = web.TCPSite(
+                runner, self.config.server.host, self.config.server.port
+            )
+            try:
+                await site.start()
+            except OSError as exc:
+                await runner.cleanup()
+                # 上一个监听可能还在优雅关闭，先重试再判定失败
+                if time.monotonic() >= deadline:
+                    if await self._listener_is_own_service():
+                        self.last_error = (
+                            f"端口 {self.config.server.port} 由上一次加载的插件实例占用，"
+                            "渲染仍可用；重启 AstrBot 进程后状态恢复正常"
+                        )
+                    else:
+                        self.last_error = (
+                            f"端口 {self.config.server.port} 启动失败：{exc}；"
+                            "该端口被其它程序占用，释放后重试或换端口"
+                        )
+                    logger.error(f"[t2i] {self.last_error}")
+                    return False, self.last_error
+                await asyncio.sleep(PORT_BIND_RETRY_INTERVAL)
+                continue
+            self.runner, self.site = runner, site
+            break
 
-        self.runner, self.site = runner, site
         self.started_at = time.time()
         self.bound_port = self._resolve_bound_port(site)
         self.last_error = ""
+        _server_registry()[self._address_key()] = self
         logger.info(f"[t2i] 内嵌渲染服务已启动：{self.endpoint}")
         return True, self.endpoint
 
@@ -163,6 +236,9 @@ class T2IHttpServer:
         if self._session is not None and not self._session.closed:
             await self._session.close()
             self._session = None
+        registry = _server_registry()
+        if registry.get(self._address_key()) is self:
+            registry.pop(self._address_key(), None)
         if self.runner is not None:
             await self.runner.cleanup()
             self.runner = None

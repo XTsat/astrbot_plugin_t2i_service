@@ -12,12 +12,14 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
+import time
 from pathlib import Path
 
 import aiohttp
 import pytest
 
 import main as plugin_main
+from t2i_plugin.browser import DONE, FAILED, RUNNING, InstallState
 from t2i_plugin.card import build_status_card, build_test_card
 from t2i_plugin.config import DEFAULT_FALLBACK_ENDPOINT
 
@@ -329,3 +331,90 @@ async def test_custom_fallback_endpoint_is_kept(plugin):
 
     assert raw["server"]["fallback_endpoint"] == "http://10.0.0.5:8999/text2img"
     assert instance.settings.server.fallback_endpoint == "http://10.0.0.5:8999/text2img"
+
+
+async def test_service_url_field_is_written_back_for_display(plugin):
+    """配置页的「本插件当前地址」按监听地址与端口回写，且不重复写盘。"""
+    port = free_port()
+    raw = RecordingConfig(
+        {
+            "server": {"enabled": False, "host": "127.0.0.1", "port": port},
+            "render": {"prelaunch": False},
+            "browser": {"cleanup_orphans": False},
+        }
+    )
+    instance = plugin(raw)
+
+    await instance._sync_service_url_field()
+    expected = f"http://127.0.0.1:{port}/text2img"
+    assert raw["endpoint"]["current_service_url"] == expected
+    assert instance.settings.endpoint.current_service_url == expected
+    assert raw.saves == 1
+
+    # 地址没变时不再写配置，避免每次启动都多一次落盘
+    await instance._sync_service_url_field()
+    assert raw.saves == 1
+
+
+# ------------------------------------------------- 安装/补装进度与失败提示
+
+
+def _running_deps(elapsed: float) -> InstallState:
+    return InstallState(
+        status=RUNNING,
+        message="正在安装 Chromium 系统依赖…",
+        started_at=time.time() - elapsed,
+    )
+
+
+async def test_install_progress_text_reports_elapsed_and_message(plugin):
+    instance = plugin({"server": {"enabled": False, "port": free_port()}})
+    instance.browser_manager.deps_state = _running_deps(42)
+    text = instance._install_progress_text("deps_state")
+    assert "补装系统依赖" in text
+    assert "已用时 42s" in text
+    assert "正在安装 Chromium 系统依赖…" in text
+
+
+async def test_install_result_text_covers_failure_and_success(plugin):
+    instance = plugin({"server": {"enabled": False, "port": free_port()}})
+    failed = InstallState(status=FAILED, message="仍有系统库缺失：libnspr4.so")
+    assert instance._install_result_text(failed, "deps_state").startswith("❌")
+
+    done = InstallState(status=DONE, message="系统依赖已补齐，用时 12s")
+    text = instance._install_result_text(done, "deps_state")
+    assert text.startswith("✅")
+    assert "/t2i_test" in text
+
+
+async def test_install_hint_while_deps_install_is_running(plugin, monkeypatch):
+    instance = plugin({"server": {"enabled": False, "port": free_port()}})
+    instance.browser_manager.deps_state = _running_deps(7)
+    hint = instance._install_hint()
+    assert "正在补装" in hint
+    assert "已用时 7s" in hint
+
+
+async def test_install_hint_points_to_install_command_when_libs_missing(
+    plugin, monkeypatch
+):
+    instance = plugin({"server": {"enabled": False, "port": free_port()}})
+    manager = instance.browser_manager
+    manager.deps_state = InstallState(status=FAILED, message="仍有系统库缺失")
+    monkeypatch.setattr(manager, "is_installed", lambda: True)
+    monkeypatch.setattr(manager, "missing_shared_libs", lambda: ["libnspr4.so"])
+    monkeypatch.setattr(plugin_main, "deps_install_available", lambda: True)
+    assert "/t2i_install" in instance._install_hint()
+
+    monkeypatch.setattr(plugin_main, "deps_install_available", lambda: False)
+    assert "playwright install-deps chromium" in instance._install_hint()
+
+
+async def test_install_hint_is_empty_when_nothing_to_fix(plugin, monkeypatch):
+    instance = plugin({"server": {"enabled": False, "port": free_port()}})
+    manager = instance.browser_manager
+    manager.deps_state = InstallState()
+    manager.install_state = InstallState()
+    monkeypatch.setattr(manager, "is_installed", lambda: True)
+    monkeypatch.setattr(manager, "missing_shared_libs", lambda: [])
+    assert instance._install_hint() == ""
