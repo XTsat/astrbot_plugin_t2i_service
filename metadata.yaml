@@ -1,0 +1,15 @@
+name: astrbot_plugin_t2i_service
+display_name: 文转图服务 (T2I Service)
+desc: 在 AstrBot 进程内提供 HTML/模板转图片渲染服务，可作为 AstrBot 的文转图端点，无需再单独部署容器；自带 Chromium 下载、状态检测与孤儿进程清理。
+short_desc: AstrBot 内置文转图渲染服务（HTML/模板 → 图片）
+version: 1.0.0
+author: AstrBot t2i-service contributors
+# 基底（上游）仓库；发布本插件到自己的仓库后，请把 repo 改成 fork 的地址，
+# 否则 WebUI 的“更新”会拉取上游代码（上游没有插件入口 main.py）。
+repo: https://github.com/AstrBotDevs/astrbot-t2i-service
+astrbot_version: ">=4.16,<5"
+tags:
+  - 文转图
+  - t2i
+  - 渲染
+  - text2image

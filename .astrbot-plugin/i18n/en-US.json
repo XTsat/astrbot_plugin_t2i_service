@@ -1,0 +1,13 @@
+{
+  "metadata": {
+    "display_name": "Text-to-Image Service",
+    "desc": "HTML/template to image rendering inside the AstrBot process, ready to be used as AstrBot's text-to-image endpoint without an extra container.",
+    "short_desc": "In-process text-to-image render service"
+  },
+  "pages": {
+    "t2i": {
+      "title": "Text-to-Image Service",
+      "description": "Service/browser status, Chromium download, render test and endpoint apply"
+    }
+  }
+}

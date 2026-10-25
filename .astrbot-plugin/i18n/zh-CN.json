@@ -1,0 +1,13 @@
+{
+  "metadata": {
+    "display_name": "文转图服务",
+    "desc": "在 AstrBot 进程内提供 HTML/模板转图片渲染服务，可直接作为 AstrBot 的文转图端点，无需单独部署容器。",
+    "short_desc": "AstrBot 内置文转图渲染服务"
+  },
+  "pages": {
+    "t2i": {
+      "title": "文转图服务",
+      "description": "服务与浏览器状态、Chromium 下载、渲染测试与端点应用"
+    }
+  }
+}

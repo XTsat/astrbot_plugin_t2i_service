@@ -1,0 +1,177 @@
+{
+  "server": {
+    "description": "内嵌渲染服务",
+    "type": "object",
+    "hint": "插件在 AstrBot 进程内提供一个与 astrbot-t2i-service 完全一致的 /text2img 接口，把 AstrBot 的「文转图端点」指向它即可，无需再部署独立容器。",
+    "items": {
+      "enabled": {
+        "description": "启用内嵌渲染服务",
+        "type": "bool",
+        "hint": "关闭后插件只保留命令与页面，不再监听端口（此时请自行部署独立服务）。",
+        "default": true
+      },
+      "host": {
+        "description": "监听地址",
+        "type": "string",
+        "hint": "AstrBot 与本插件在同一台机器时保持 127.0.0.1 即可；若 AstrBot 在容器里而插件在宿主，需改为 0.0.0.0。",
+        "default": "127.0.0.1"
+      },
+      "port": {
+        "description": "监听端口",
+        "type": "int",
+        "hint": "默认 8999，与上游服务保持一致。换端口后记得同步 AstrBot 的文转图端点地址。",
+        "default": 8999
+      },
+      "auth_token": {
+        "description": "鉴权 Token（可留空）",
+        "type": "string",
+        "hint": "留空表示不校验。填写后请求需带 Authorization: Bearer <token>，用于跨机部署时防止端口裸露。",
+        "default": ""
+      },
+      "fallback_enabled": {
+        "description": "本机渲染不可用时透传上游公共端点",
+        "type": "bool",
+        "hint": "例如 Chromium 还没装好时，请求会自动转发到 fallback_endpoint，保证聊天的文转图不中断。",
+        "default": true
+      },
+      "fallback_endpoint": {
+        "description": "透传的备用端点",
+        "type": "string",
+        "hint": "需包含 /text2img，例如 https://t2i.soulter.top/text2img。",
+        "default": "https://t2i.soulter.top/text2img"
+      }
+    }
+  },
+  "render": {
+    "description": "渲染行为",
+    "type": "object",
+    "items": {
+      "concurrency": {
+        "description": "并发渲染数",
+        "type": "int",
+        "hint": "每个并发对应一个 Chromium 页面，建议 1-4；过大会明显吃内存。",
+        "default": 2
+      },
+      "no_sandbox": {
+        "description": "以 --no-sandbox 启动 Chromium",
+        "type": "bool",
+        "hint": "AstrBot 官方镜像与大多数部署以 root 运行，Chromium 必须带 --no-sandbox 才能启动，因此默认开启。若你的 AstrBot 以非 root 用户运行且在意浏览器沙箱隔离，可以关掉。",
+        "default": true
+      },
+      "idle_timeout_seconds": {
+        "description": "空闲多久后关闭 Chromium（秒）",
+        "type": "int",
+        "hint": "关闭后进程内存会被释放，下次渲染再冷启动（约 1-2 秒）。填 0 表示从不主动关闭。",
+        "default": 300
+      },
+      "prelaunch": {
+        "description": "插件启动时预热浏览器",
+        "type": "bool",
+        "hint": "打开后第一条文转图请求不用等冷启动，代价是常驻一个 Chromium 进程。",
+        "default": false
+      },
+      "default_type": {
+        "description": "默认输出格式",
+        "type": "string",
+        "options": [
+          "jpeg",
+          "png"
+        ],
+        "hint": "请求里带 options.type 时以请求为准；jpeg 体积更小，png 更清晰。",
+        "default": "jpeg"
+      },
+      "default_quality": {
+        "description": "JPEG 默认质量",
+        "type": "int",
+        "hint": "0-100，仅对 jpeg 生效，40-80 比较均衡。",
+        "default": 40
+      },
+      "full_page": {
+        "description": "默认整页截图",
+        "type": "bool",
+        "hint": "关闭后只截可视区域（默认 1080p 高度），长文本可能被截断。",
+        "default": true
+      }
+    }
+  },
+  "browser": {
+    "description": "Chromium 供给",
+    "type": "object",
+    "hint": "插件自带浏览器管理：可检测、下载、清理孤儿进程，避免和别的插件抢同一个 Chromium。",
+    "items": {
+      "browsers_path": {
+        "description": "浏览器安装目录（留空=插件数据目录/browsers）",
+        "type": "string",
+        "hint": "留空时使用 AstrBot 插件数据目录，卸载重装插件不会丢。",
+        "default": ""
+      },
+      "download_host": {
+        "description": "Playwright 浏览器下载源",
+        "type": "string",
+        "hint": "默认走 npmmirror 镜像，国内下载更快；留空则用官方 CDN。",
+        "default": "https://cdn.npmmirror.com/binaries/playwright"
+      },
+      "executable_path": {
+        "description": "自定义 Chromium 可执行文件路径",
+        "type": "string",
+        "hint": "仅在你想复用系统 / 其他容器里已有的 Chromium 时填写，填写后不再下载浏览器。",
+        "default": ""
+      },
+      "auto_install_deps": {
+        "description": "安装浏览器时同时安装系统依赖",
+        "type": "bool",
+        "hint": "需要 root/apt 权限。AstrBot 官方镜像通常已具备依赖，默认关闭。",
+        "default": false
+      },
+      "cleanup_orphans": {
+        "description": "插件启动时清理残留 Chromium",
+        "type": "bool",
+        "hint": "插件被强杀后可能留下浏览器进程，打开此项可在下次启动时回收。",
+        "default": true
+      },
+      "install_timeout_seconds": {
+        "description": "浏览器安装超时（秒）",
+        "type": "int",
+        "hint": "网络较慢时可调大。",
+        "default": 900
+      }
+    }
+  },
+  "endpoint": {
+    "description": "接入 AstrBot 文转图",
+    "type": "object",
+    "hint": "决定是否自动把 AstrBot 主程序的文转图端点改为本插件。",
+    "items": {
+      "auto_configure": {
+        "description": "启动时自动写入 AstrBot 文转图端点",
+        "type": "bool",
+        "hint": "打开后插件会读取 AstrBot 配置，写入 t2i_endpoint 与 t2i_strategy=remote（300 秒空闲探测策略），重启 AstrBot 生效。",
+        "default": false
+      },
+      "service_url": {
+        "description": "写入的端点地址（留空=按监听地址自动生成）",
+        "type": "string",
+        "hint": "仅在 AstrBot 通过别的主机名/端口访问本插件时才需要填写，需包含 /text2img。",
+        "default": ""
+      }
+    }
+  },
+  "storage": {
+    "description": "图片清理",
+    "type": "object",
+    "items": {
+      "image_lifetime_hours": {
+        "description": "渲染图片保留时长（小时）",
+        "type": "int",
+        "hint": "AstrBot 取走图片后会自行转存，插件侧过期的图片会被定时删除。",
+        "default": 24
+      },
+      "cleanup_interval_minutes": {
+        "description": "清理间隔（分钟）",
+        "type": "int",
+        "hint": "仅用于文档展示，插件实际每分钟检查一次并删除过期文件。",
+        "default": 60
+      }
+    }
+  }
+}
