@@ -2,12 +2,13 @@ name: astrbot_plugin_t2i_service
 display_name: 文转图服务 (T2I Service)
 desc: 在 AstrBot 进程内提供 HTML/模板转图片渲染服务，可作为 AstrBot 的文转图端点，无需再单独部署容器；自带 Chromium 下载、状态检测与孤儿进程清理。
 short_desc: AstrBot 内置文转图渲染服务（HTML/模板 → 图片）
-version: 1.0.0
+version: v1.0.0
 author: XTsat
 # 本插件的发布仓库：WebUI 的「更新」用它拉代码。指向上游会更新失败
 # （上游没有 metadata.yaml），因此这里必须保持为自己的仓库。
 repo: https://github.com/XTsat/astrbot_plugin_t2i_service
 astrbot_version: ">=4.16,<5"
+social_link: https://xtsat.cc.cd/posts/202607031752.html
 tags:
   - 文转图
   - t2i

@@ -1,109 +1,114 @@
-# Text-to-Image Service Plugin for AstrBot
+<div align="center">
+<h1>T2I Service</h1>
+<p><strong>HTML/template to image rendering inside the AstrBot process, ready to serve as AstrBot's text-to-image endpoint with no extra container; includes Chromium download, status detection and orphan-process cleanup.</strong></p>
+<p><sub>text-to-image &nbsp;&nbsp; t2i &nbsp;&nbsp; rendering</sub></p>
+<p><a href="README.md">中文</a> &nbsp;/&nbsp; <strong>English</strong></p>
+</div>
 
-Brings [astrbot-t2i-service](https://github.com/AstrBotDevs/astrbot-t2i-service) into the AstrBot process: no extra container, no port mapping — AstrBot's text-to-image feature works out of the box, rendering HTML/templates inside AstrBot itself.
+## Features
 
-English | [简体中文](README.md)
+The rendering engine is ported from [astrbot-t2i-service](https://github.com/AstrBotDevs/astrbot-t2i-service): no extra container to deploy, AstrBot's text-to-image works out of the box, and HTML / Jinja2 templates are rendered into images inside AstrBot itself.
 
-![Plugin status card](docs/assets/status-test-card.png)
+- **No extra container**: the render service runs inside the AstrBot process — no Docker, no port mapping, no image to maintain.
+- **Browser in one step**: turn on **Download Chromium** in the config and save (npmmirror mirror by default, ~200 MB); an existing system Chromium can be pointed at instead.
+- **Missing libraries installed for you**: when Chromium is downloaded but cannot launch (missing `libnspr4` and friends), the plugin finds out which libraries are missing and installs them; if the environment does not allow it, you get the exact command to run.
+- **No endpoint to copy by hand**: optionally the plugin writes its own address into AstrBot's text-to-image config, together with the text-to-image output switch.
+- **Rendering stays available**: while local rendering is unavailable (for example before Chromium is installed), requests are proxied to the fallback endpoint and the image is stored locally before it is handed to AstrBot.
+- **Status at a glance**: `/t2i_status` reports the service, the browser, system libraries, the endpoint and render stats; `/t2i_test` renders a card on the spot so you can see whether the chain works.
+- **Same interface as upstream**: AstrBot and any compatible client need no code changes.
 
-## Why
-
-AstrBot's text-to-image defaults to a remote endpoint (`t2i_strategy: remote` + `t2i_endpoint`). The public endpoint works but latency depends on your network; self-hosting means yet another container, port and image to maintain.
-
-This plugin embeds the same render service directly into AstrBot:
-
-- reuses AstrBot's own Python environment — no extra container or port mapping;
-- renders in-process over loopback, no cross-host latency;
-- ships a Chromium installer (mirror-friendly), status checks, orphan process cleanup and optional endpoint auto-configuration;
-- checks Chromium's system libraries and installs the missing ones on demand, so a downloaded-but-unlaunchable browser does not leave you stuck;
-- keeps the upstream HTTP contract, so AstrBot and any compatible client need no code changes.
-
-| | Public endpoint | Standalone container | This plugin |
+| | Public endpoint | Self-hosted service | This plugin |
 | --- | --- | --- | --- |
 | Extra deployment | none | Docker required | none |
-| Latency | public network | LAN/local | in-process |
-| Chromium supply | remote | maintain your own image | one-command install |
-| Version sync with AstrBot | n/a | manual | same process |
-
-## Install
-
-1. Install from the AstrBot WebUI plugin market (or drop this repo into `data/plugins/astrbot_plugin_t2i_service`).
-2. Installation only `pip install`s `playwright` (~40 MB); Chromium is **not** downloaded automatically.
-3. Restart AstrBot and confirm `server.enabled` / `server.port` (default `127.0.0.1:8999`).
-4. Download Chromium (~200 MB, npmmirror by default): turn on **Download Chromium** in the plugin config and save, or run `/t2i_install` (`/t2i_install mirror` for the China mirror). If the container lacks system libraries, the same flow installs them next.
-5. Run `/t2i_test` to verify. To auto-wire AstrBot's endpoint, enable `endpoint.auto_configure`.
-
-> Rendered images land in the plugin data directory (`data/plugin_data/astrbot_plugin_t2i_service/data/`) and are cleaned after 24 hours.
+| Traffic path | public network | local / LAN | inside the AstrBot process |
+| Chromium supply | remote side | maintain your own image | one-click download in the config |
+| Upgrades with AstrBot | unrelated | manual | follows AstrBot |
 
 ## Commands
 
-| Command | Description |
-| --- | --- |
-| `/t2i_status` | Service URL, browser state, system libraries, render stats, concurrency |
-| `/t2i_install` | Download and install Chromium (`/t2i_install mirror` for the CN mirror); installs missing system libraries when the browser is already there but cannot launch |
-| `/t2i_test` | Render a self-check card and send the image back |
-| `/t2i_restart` | Restart the embedded service and close the browser |
+**Installing needs no command**: turn on **Download Chromium** in the WebUI plugin config page and save — the download and install start in the background (npmmirror by default, ~200 MB), the switch turns itself off when it finishes, and **Chromium ready** on the same page shows the result. The commands below are the chat-side entry points for the same capabilities; either route works.
+
+| Command | Permission | Description |
+| --- | --- | --- |
+| `/t2i_status` | everyone | Embedded service address, Chromium and system library state, render stats, plus AstrBot's current text-to-image endpoint and output switch |
+| `/t2i_install` | everyone | Download and install Chromium; when the browser is present but system libraries are missing it installs those instead, streaming progress as it goes |
+| `/t2i_test` | everyone | Render a self-check card and send it back to verify the whole chain |
+| `/t2i_restart` | everyone | Restart the embedded render service and release Chromium |
+
+For a first run entirely in chat, go `/t2i_status` → `/t2i_install` → `/t2i_test`: see what is missing, install it, then render one image to confirm.
 
 ## Configuration
 
-Configuration groups (see `_conf_schema.json`):
+The plugin config page shows the five groups below; the **Default** column is what takes effect right after installation.
 
-### `browser`
+### Install Chromium (`browser`)
 
-| Key | Default | Description |
-| --- | --- | --- |
-| `download_chromium` | `false` | Turn it on and save the config to start the Chromium download, no command needed; the switch closes itself once the download ends (success or failure) and stays visible |
-| `chromium_ready` | `false` | Whether Chromium is ready — maintained by the plugin, display only: when on you can render right away, no download needed |
-| `browsers_path` | empty | Browser install dir; defaults to the plugin data dir `browsers/` |
-| `download_host` | `https://cdn.npmmirror.com/binaries/playwright` | Playwright download host |
-| `executable_path` | empty | Reuse an existing Chromium binary |
-| `auto_install_deps` | `true` | Install missing system libraries automatically (needs root + apt/dnf; degrades to a warning when unavailable) |
-| `cleanup_orphans` | `true` | Kill leftover Chromium on startup |
-| `install_timeout_seconds` | `900` | Download timeout |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| Download Chromium (`download_chromium`) | switch | off | Turn it on and save to download in the background — no command needed; the switch turns itself off once the download ends (success or failure), and turning it on again when Chromium is ready does not re-download |
+| Chromium ready (`chromium_ready`) | switch | off | Written by the plugin from the real browser state, display only: on means you can render right away; manual edits are overwritten on the next start |
+| Browser install directory (`browsers_path`) | text | empty | Empty uses `browsers/` inside the plugin data directory, which survives reinstalling the plugin |
+| Playwright download host (`download_host`) | text | `https://cdn.npmmirror.com/binaries/playwright` | npmmirror by default, faster in mainland China; leave empty for the official CDN |
+| Custom Chromium executable (`executable_path`) | text | empty | Fill in to reuse a Chromium that already exists on the system or in another container; the plugin then skips downloading |
+| Install missing system libraries automatically (`auto_install_deps`) | switch | on | Installs missing libraries on demand; needs root plus `apt-get`/`dnf`, and degrades to a hint when unavailable |
+| Clean up leftover Chromium on startup (`cleanup_orphans`) | switch | on | A killed plugin may leave browser processes behind; they are reclaimed on the next start |
+| Browser install timeout (`install_timeout_seconds`) | number | `900` | Raise it on a slow network; in seconds |
 
-### `server`
+### Embedded render service (`server`)
 
-| Key | Default | Description |
-| --- | --- | --- |
-| `enabled` | `true` | Enable the embedded service |
-| `host` | `127.0.0.1` | Listen address. The plugin runs inside AstrBot, so loopback is all you need; switch to `0.0.0.0` only when a machine or container outside AstrBot must reach it |
-| `port` | `8999` | Listen port |
-| `auth_token` | empty | When set, requires `Authorization: Bearer <token>` |
-| `fallback_enabled` | `true` | Proxy to the upstream public endpoint when local rendering fails |
-| `fallback_endpoint` | `https://t2i.rcfortress.site/text2img` | Fallback target (the image is downloaded locally before it is returned; a self-hosted URL works too) |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| Enable the embedded render service (`enabled`) | switch | on | When off, only the commands remain and no port is opened (deploy a standalone service in that case) |
+| Listen address (`host`) | text | `127.0.0.1` | The plugin runs inside AstrBot, so loopback is enough; switch to `0.0.0.0` only when a machine or container outside AstrBot must reach it, and set an auth token as well |
+| Listen port (`port`) | number | `8999` | Matches upstream; after changing it, update AstrBot's text-to-image endpoint too |
+| Auth token (`auth_token`) | text | empty | Empty means no check; when set, requests must carry `Authorization: Bearer <token>` |
+| Proxy to the upstream public endpoint when local rendering fails (`fallback_enabled`) | switch | on | For example before Chromium is ready, requests are forwarded to the fallback endpoint so text-to-image keeps working |
+| Fallback endpoint (`fallback_endpoint`) | text | `https://t2i.rcfortress.site/text2img` | Must include `/text2img`; the image is downloaded locally before it is returned, and a self-hosted URL works too |
 
-### `endpoint`
+### Wire into AstrBot (`endpoint`)
 
-| Key | Default | Description |
-| --- | --- | --- |
-| `current_service_url` | empty | Current plugin address, filled in by the plugin from the listen address and port (default `http://127.0.0.1:8999/text2img`); display only |
-| `auto_configure` | `false` | Write the endpoint into AstrBot's config on startup (with the `remote` strategy) |
-| `enable_t2i_output` | `true` | When auto-configure runs, also turn on AstrBot's text-to-image output switch (`t2i`); turn off to change the endpoint address only |
-| `service_url` | empty | Endpoint to write; auto-derived from the listen address when empty |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| Current plugin address (`current_service_url`) | text | empty | Written by the plugin from the listen address and port (default `http://127.0.0.1:8999/text2img`); copy it into AstrBot's text-to-image API address. Display only — manual edits are overwritten on the next start |
+| Write AstrBot's text-to-image endpoint on startup (`auto_configure`) | switch | off | Writes the address above and sets the strategy to `remote`; restart AstrBot to apply |
+| Also turn on the text-to-image output switch (`enable_t2i_output`) | switch | on | Nothing is rendered while AstrBot's output switch (`t2i`) stays off; this makes the auto-write turn it on. Turn it off to change the address only |
+| Endpoint address to write (`service_url`) | text | empty | Only needed when AstrBot reaches the plugin through another host or port; empty derives it from the listen address |
 
-### `render`
+### Rendering (`render`)
 
-| Key | Default | Description |
-| --- | --- | --- |
-| `concurrency` | `2` | Concurrent renders (open pages) |
-| `no_sandbox` | `true` | Launch Chromium with `--no-sandbox`; required when AstrBot runs as root |
-| `idle_timeout_seconds` | `300` | Close Chromium after this idle period |
-| `prelaunch` | `false` | Warm up the browser at startup |
-| `default_type` | `jpeg` | Output format when the request omits `type` |
-| `default_quality` | `40` | Default JPEG quality |
-| `full_page` | `true` | Full-page screenshots by default |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| Concurrent renders (`concurrency`) | number | `2` | Upper bound of pages rendered at the same time; extra requests queue. 1–4 is recommended, larger values eat memory |
+| Launch Chromium with `--no-sandbox` (`no_sandbox`) | switch | on | The official AstrBot image runs as root, where Chromium only starts with `--no-sandbox`; turn it off for a non-root deployment that wants the sandbox |
+| Close Chromium after being idle (`idle_timeout_seconds`) | number | `300` | Frees process memory; the next render pays a ~1–2 s cold start. `0` never closes it |
+| Warm the browser up on startup (`prelaunch`) | switch | off | The first request skips the cold start, at the cost of one Chromium process staying resident |
+| Default output format (`default_type`) | dropdown | `jpeg` | Used when the request has no `options.type`; `jpeg` is smaller, `png` is sharper |
+| Default JPEG quality (`default_quality`) | number | `40` | `0`–`100`, jpeg only; 40–80 is a good balance |
+| Full-page screenshots by default (`full_page`) | switch | on | Off captures only the viewport (1080p tall by default), so long text may be cut off |
 
-### `storage`
+### Image cleanup (`storage`)
 
-| Key | Default | Description |
-| --- | --- | --- |
-| `image_lifetime_hours` | `24` | Image retention |
-| `cleanup_interval_minutes` | `60` | Cleanup interval |
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| Image retention (`image_lifetime_hours`) | number | `24` | AstrBot copies images away after fetching them; expired images on the plugin side are deleted on a timer |
+| Cleanup interval (`cleanup_interval_minutes`) | number | `60` | Informational only: the plugin actually checks every minute and deletes expired files |
 
-## Wiring into AstrBot
+## Install and first run
 
-- **Find the address**: the `current_service_url` field under **Wire into AstrBot** is exactly what belongs in AstrBot's text-to-image API address (default `http://127.0.0.1:8999/text2img`, updated automatically when you change the listen address or port).
-- **Automatic**: enable `endpoint.auto_configure`, the plugin writes that endpoint and switches to the remote strategy; AstrBot's text-to-image output switch (`t2i`) is controlled separately by `endpoint.enable_t2i_output` (on by default) — nothing is rendered while that switch stays off.
+1. Install the plugin from the AstrBot WebUI plugin market, or drop this repository into `data/plugins/astrbot_plugin_t2i_service` (the directory name must match the plugin name).
+2. Installation only `pip install`s `playwright` (~40 MB Python package); Chromium is **not** downloaded automatically.
+3. Restart AstrBot and confirm **Enable the embedded render service** is on and **Listen port** is `8999` (or a port of your choice).
+4. Turn on **Download Chromium** in the plugin config and save to download and install in the background (~200 MB, npmmirror by default); `/t2i_install` in chat does the same. If the container lacks system libraries, the same flow installs them next.
+5. Run `/t2i_test` to verify rendering; text-to-image is ready once it succeeds. To let the plugin take over AstrBot's endpoint, also turn on **Write AstrBot's text-to-image endpoint on startup**.
+
+Rendered images land in the plugin data directory `data/plugin_data/astrbot_plugin_t2i_service/data/` and are deleted after 24 hours by default; Chromium lands in `browsers/` in the same directory.
+
+## Pointing AstrBot at this plugin
+
+The plugin exposes the same text-to-image endpoint as upstream, and AstrBot has to know its address:
+
+- **Find the address**: **Current plugin address** under **Wire into AstrBot** is exactly what belongs in AstrBot's text-to-image API address (default `http://127.0.0.1:8999/text2img`, updated automatically when you change the listen address or port).
+- **Automatic**: turn on **Write AstrBot's text-to-image endpoint on startup**; the plugin writes that address and switches to the remote strategy. AstrBot's text-to-image output switch (`t2i`) is controlled by **Also turn on the text-to-image output switch** (on by default) — nothing is rendered while the output switch stays off.
 - **Manual**: in AstrBot's `data/cmd_config.json`:
 
 ```jsonc
@@ -114,73 +119,65 @@ Configuration groups (see `_conf_schema.json`):
 }
 ```
 
-Restart AstrBot afterwards. `/t2i_status` reports the current endpoint, strategy and whether text-to-image output is on.
+Restart AstrBot afterwards. `/t2i_status` reports the current endpoint, strategy and output switch state.
+
+## Requirements
+
+- **AstrBot 4.16 or newer** (below 5.x): the plugin config, event and logging APIs it uses come from that range.
+- **Python 3.11 or newer**.
+- **`playwright` (pinned to 1.64.1)**: installed with the plugin dependencies, nothing to do by hand.
+- **Chromium**: downloaded and managed by the plugin (~200 MB of disk); an existing system browser works too.
+- **Automatic library installation** needs the AstrBot process to run as root with `apt-get` or `dnf` in the container.
+- **Memory**: every concurrent render holds one browser page, so a larger `render.concurrency` costs more memory.
 
 ## HTTP API
 
-Render endpoints (upstream-compatible contract):
+For your own integrations (AstrBot calls these itself, so you rarely touch them):
 
-- `POST /text2img/generate` — `html` or `tmpl` + `tmpldata` + `options`
-- `GET /text2img/data/{image_id}` — fetch JSON-mode images
+- `POST /text2img/generate` — body with `html`, or `tmpl` + `tmpldata`, plus optional `options`
+- `GET /text2img/data/{image_id}` — fetch images in JSON mode
 - `GET /healthz` — health check
 
-See [`docs/APIS.md`](docs/APIS.md).
-
-## Measured
-
-Verified end-to-end on the official AstrBot image with real Chromium 1248:
-
-| Metric | Value |
-| --- | --- |
-| First render (cold, incl. browser launch) | 1.08 s |
-| Warm render | 0.63 s |
-| JPEG size (800×720, q40) | ~7 KB |
-| Status card PNG (800×1080) | ~267 KB |
-| AstrBot's own `NetworkRenderStrategy` call | works (client → plugin → Chromium → JPEG) |
-
-![End-to-end render](docs/assets/integration-render.jpeg)
-
-## Layout
-
-| Path | Responsibility |
-| --- | --- |
-| `main.py` | Plugin entry: lifecycle, 4 commands |
-| `t2i_plugin/` | Adapter layer: config, Chromium supply, embedded HTTP server, cards |
-| `t2i_core/` | Rendering core ported from upstream: Playwright render, storage, metrics |
-| `service/main.py` | Standalone service entry (FastAPI, upstream capability preserved) |
-| `docs/` | Docs: `APIS.md`, `ENV-REPORT.md`, `standalone/` |
-| `tools/envlab/` | Containerized verification scripts |
+The interface matches upstream; the full contract is in the upstream docs at [`docs/standalone/README.md`](docs/standalone/README.md).
 
 ## Standalone mode (optional)
 
-As a plugin it runs inside the AstrBot process, so there is no such thing as "plugin on the host, AstrBot in a container". This section only matters when you skip the plugin and run a **separate service** instead — for example to share one service between several AstrBot instances, or to host it on another machine. The upstream capability is intact:
+As a plugin, rendering happens inside the AstrBot process — there is no "plugin on the host, AstrBot in a container" combination. This section only matters when you skip the plugin and run a **separate service** instead (to share one service between several AstrBot instances, or to host it on another machine). The upstream capability is intact:
 
 ```bash
 docker build -t astrbot-t2i-service .
 docker run -d -p 8999:8999 astrbot-t2i-service
 ```
 
-Env vars, S3/R2 storage and Prometheus metrics behave as upstream — see [`docs/standalone/README.md`](docs/standalone/README.md) and [`docs/standalone/MONITORING.md`](docs/standalone/MONITORING.md).
+Environment variables, S3/R2 storage and Prometheus metrics behave as upstream — see [`docs/standalone/README.md`](docs/standalone/README.md) and [`docs/standalone/MONITORING.md`](docs/standalone/MONITORING.md).
 
-When the standalone service lives outside AstrBot, AstrBot's text-to-image API address must be an address that AstrBot can actually reach (same machine: `http://127.0.0.1:8999/text2img`; another container or host: the host's LAN IP or a domain), and the service should have an auth token set — never expose the bare port to the internet.
+When the standalone service lives outside AstrBot, AstrBot's text-to-image API address must be an address AstrBot can actually reach (same machine: `http://127.0.0.1:8999/text2img`; another container or host: the host's LAN IP or a domain), and the service should have an auth token set — never expose the bare port to the internet.
 
 ## FAQ
 
-**Chromium download is slow/fails** — the npmmirror mirror is used by default; set `browser.download_host`, or point `browser.browsers_path` at an existing `PLAYWRIGHT_BROWSERS_PATH`. The **Download Chromium** switch closes itself when the download ends: if it closed while `chromium_ready` is still false, that run failed — check the install log via `/t2i_status`. The switch stays visible after Chromium is installed; turning it on again only flips it back off.
+**Chromium download is slow or fails**
+npmmirror is used by default; you can also change **Playwright download host**, or point **Browser install directory** at an existing browser directory. The **Download Chromium** switch turns itself off when the download ends: if it closed while **Chromium ready** is still off, that run failed — check the install state and log tail in `/t2i_status`.
 
-**`BrowserType.launch: Target page, context or browser has been closed` / `error while loading shared libraries: libnspr4.so`** — the container is missing Chromium's system libraries (`libnspr4`, `libnss3`, `libatk`, ...), even though the browser itself is downloaded. Run `/t2i_install` to install them (AstrBot must run as root with `apt-get`/`dnf` available); otherwise the plugin prints the command you can run manually.
+**Rendering fails with `error while loading shared libraries: libnspr4.so` or `BrowserType.launch: Target page, context or browser has been closed`**
+The container is missing Chromium's system libraries (the browser itself is downloaded, but `libnspr4`, `libnss3`, `libatk` ... are not). Run `/t2i_install` to install them (AstrBot must run as root with `apt-get`/`dnf` available); when the environment does not allow it, the plugin prints the command to run manually.
 
-**`No usable sandbox!`** — the official AstrBot image runs as root; keep `render.no_sandbox=true`.
+**Launching the browser fails with `No usable sandbox!`**
+The official AstrBot image runs as root — keep **Launch Chromium with `--no-sandbox`** on.
 
-**Fallback endpoint errors or slow images** — until Chromium is ready, requests are proxied to `server.fallback_endpoint` (the official public endpoint `https://t2i.rcfortress.site/text2img` by default; it runs abroad and answers `render queue wait exceeded` when the queue is long; a retired default left over from an older version is replaced by the current default at startup). Once the local Chromium is installed the fallback is no longer used; you can also point `fallback_endpoint` at your own service or turn `server.fallback_enabled` off.
+**Fallback endpoint errors or slow images**
+Until Chromium is ready, requests are proxied to **Fallback endpoint** (the official public endpoint `https://t2i.rcfortress.site/text2img` by default; it runs abroad and answers `render queue wait exceeded` when the queue is long; a retired default left over from an older version is replaced by the current one at startup, addresses you filled in yourself are kept). Once local Chromium is installed the fallback is no longer used; you can also point it at your own service or turn **Proxy to the upstream public endpoint when local rendering fails** off.
 
-**Port already in use** — change `server.port`, then re-enable `endpoint.auto_configure` (or update `t2i_endpoint` manually).
+**Port already in use**
+Change **Listen port**, then re-enable **Write AstrBot's text-to-image endpoint on startup**, or update AstrBot's `t2i_endpoint` manually.
 
-**Text-to-image broken after a restart** — check `t2i_endpoint` still targets the plugin port; `/t2i_status` flags a mismatch.
+**Text-to-image broken after an AstrBot restart**
+Check that `t2i_endpoint` still targets the plugin's listen address; `/t2i_status` shows the address the plugin actually uses when the port was changed and not synced.
 
-**Disk usage** — Chromium ~200 MB in the plugin data dir; rendered images are kept 24 h and cleaned periodically.
+**Disk usage**
+Chromium takes ~200 MB in the plugin data directory; rendered images are kept 24 hours and cleaned on a timer.
 
-**Logs** — render/cleanup service logs are grouped under the plugin's own logger, so filtering the AstrBot log by the plugin name or the `[t2i]` prefix shows render success/failure records; successful renders do not log HTML content.
+**Where are the logs**
+Render and cleanup logs sit together with the plugin's other logs — filter the AstrBot log by the plugin name or the `[t2i]` prefix. Successful renders do not log HTML content.
 
 ## Development
 
@@ -189,9 +186,9 @@ pip install -r requirements-standalone.txt pytest pytest-asyncio
 pytest tests/ -q
 ```
 
-- Plugin tests need no real Chromium (renderer is faked); end-to-end runs live in `tools/envlab/`.
-- `requirements.txt` holds runtime deps only (`playwright`); standalone mode uses `requirements-standalone.txt`.
+- Plugin tests need no real Chromium (the renderer is faked); end-to-end runs with a real browser live in `tools/envlab/`.
+- `requirements.txt` holds the plugin runtime dependency only (`playwright`); standalone mode uses `requirements-standalone.txt`.
 
-## License
+## License and credits
 
-Apache-2.0, same as upstream. The upstream `LICENSE` is kept; porting notes live in [`NOTICE`](NOTICE).
+Apache-2.0, same as upstream. The rendering core is ported from [astrbot-t2i-service](https://github.com/AstrBotDevs/astrbot-t2i-service); the upstream `LICENSE` is kept and the porting notes live in [`NOTICE`](NOTICE).

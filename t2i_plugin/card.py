@@ -80,6 +80,14 @@ def _now() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _version_label(raw: object) -> str:
+    # metadata.yaml 的 version 允许写 1.0.0 或 v1.0.0，卡片统一补成 vX.Y.Z，避免出现 vv1.0.0
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    return text if text.startswith("v") else f"v{text}"
+
+
 def build_test_card(
     quiet: bool = False,
     server_running: bool = True,
@@ -233,7 +241,7 @@ def build_status_card(payload: dict) -> str:
     <h1>文转图服务状态</h1>
   </div>
   <div class="sub">
-    插件 {_esc(payload.get("plugin_name", ""))} v{_esc(payload.get("plugin_version", ""))}
+    插件 {_esc(payload.get("plugin_name", ""))} {_esc(_version_label(payload.get("plugin_version", "")))}
     · 快照时间 {_esc(_now())}
   </div>
   <table>{"".join(rows)}</table>
