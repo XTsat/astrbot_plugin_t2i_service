@@ -88,6 +88,7 @@ Configuration groups (see `_conf_schema.json`):
 
 | Key | Default | Description |
 | --- | --- | --- |
+| `current_service_url` | empty | Current plugin address, filled in by the plugin from the listen address and port (default `http://127.0.0.1:8999/text2img`); display only |
 | `auto_configure` | `false` | Write the endpoint into AstrBot's config on startup |
 | `service_url` | empty | Endpoint to write; auto-derived from the listen address when empty |
 
@@ -100,7 +101,8 @@ Configuration groups (see `_conf_schema.json`):
 
 ## Wiring into AstrBot
 
-- **Automatic**: enable `endpoint.auto_configure` (or click **Apply endpoint**), the plugin writes the endpoint and switches to the remote strategy.
+- **Find the address**: the `current_service_url` field under **Wire into AstrBot** is exactly what belongs in AstrBot's text-to-image API address (default `http://127.0.0.1:8999/text2img`, updated automatically when you change the listen address or port).
+- **Automatic**: enable `endpoint.auto_configure` (or click **Apply endpoint**), the plugin writes that endpoint and switches to the remote strategy.
 - **Manual**: in AstrBot's `data/cmd_config.json`:
 
 ```jsonc

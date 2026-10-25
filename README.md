@@ -88,6 +88,7 @@ AstrBot 的文转图能力默认走「远端端点」（`t2i_strategy: remote` +
 
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
+| `current_service_url` | 空 | 本插件当前地址，插件按监听地址与端口自动写入（默认 `http://127.0.0.1:8999/text2img`），仅供查看 |
 | `auto_configure` | `false` | 启动时把端点写进 AstrBot 配置 |
 | `service_url` | 空 | 要写入的端点地址，空则按监听地址自动生成 |
 
@@ -102,7 +103,8 @@ AstrBot 的文转图能力默认走「远端端点」（`t2i_strategy: remote` +
 
 插件提供与上游一致的端点，需要让 AstrBot 知道它：
 
-- **自动**：打开 `endpoint.auto_configure`（或点 WebUI 插件页面上的「应用端点」），插件会把端点写入 AstrBot 并切到远程策略；
+- **查地址**：配置页「接入 AstrBot 文转图」中的「本插件当前地址」就是应填进 AstrBot「文本转图像服务 API 地址」的值（默认 `http://127.0.0.1:8999/text2img`，改了监听地址或端口后自动更新）；
+- **自动**：打开 `endpoint.auto_configure`（或点 WebUI 插件页面上的「应用端点」），插件会把该地址写入 AstrBot 并切到远程策略；
 - **手动**：在 AstrBot `data/cmd_config.json` 中确认：
 
 ```jsonc
