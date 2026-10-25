@@ -53,7 +53,7 @@ Configuration groups (see `_conf_schema.json`):
 | Key | Default | Description |
 | --- | --- | --- |
 | `enabled` | `true` | Enable the embedded service |
-| `host` | `127.0.0.1` | Listen address (keep loopback for local-only use) |
+| `host` | `127.0.0.1` | Listen address. The plugin runs inside AstrBot, so loopback is all you need; switch to `0.0.0.0` only when a machine or container outside AstrBot must reach it |
 | `port` | `8999` | Listen port |
 | `auth_token` | empty | When set, requires `Authorization: Bearer <token>` |
 | `fallback_enabled` | `true` | Proxy to the upstream public endpoint when local rendering fails |
@@ -173,7 +173,7 @@ Verified end-to-end on the official AstrBot image with real Chromium 1248:
 
 ## Standalone mode (optional)
 
-Prefer a container? The upstream capability is intact:
+As a plugin it runs inside the AstrBot process, so there is no such thing as "plugin on the host, AstrBot in a container". This section only matters when you skip the plugin and run a **separate service** instead — for example to share one service between several AstrBot instances, or to host it on another machine. The upstream capability is intact:
 
 ```bash
 docker build -t astrbot-t2i-service .
@@ -181,6 +181,8 @@ docker run -d -p 8999:8999 astrbot-t2i-service
 ```
 
 Env vars, S3/R2 storage and Prometheus metrics behave as upstream — see [`docs/standalone/README.md`](docs/standalone/README.md) and [`docs/standalone/MONITORING.md`](docs/standalone/MONITORING.md).
+
+When the standalone service lives outside AstrBot, AstrBot's text-to-image API address must be an address that AstrBot can actually reach (same machine: `http://127.0.0.1:8999/text2img`; another container or host: the host's LAN IP or a domain), and the service should have an auth token set — never expose the bare port to the internet.
 
 ## FAQ
 

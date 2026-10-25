@@ -53,7 +53,7 @@ AstrBot 的文转图能力默认走「远端端点」（`t2i_strategy: remote` +
 | 键 | 默认值 | 说明 |
 | --- | --- | --- |
 | `enabled` | `true` | 是否启用内嵌服务 |
-| `host` | `127.0.0.1` | 监听地址。仅本机使用时保持回环即可 |
+| `host` | `127.0.0.1` | 监听地址。插件与 AstrBot 同进程，保持回环即可；只有要被 AstrBot 之外的机器/容器访问时才改 `0.0.0.0` |
 | `port` | `8999` | 监听端口 |
 | `auth_token` | 空 | 非空时要求 `Authorization: Bearer <token>` |
 | `fallback_enabled` | `true` | 本机渲染失败时透传上游公共端点 |
@@ -176,7 +176,7 @@ AstrBot 的文转图能力默认走「远端端点」（`t2i_strategy: remote` +
 
 ## 独立服务模式（可选）
 
-不想用插件、仍想跑独立容器？上游能力完整保留：
+插件形态下插件就跑在 AstrBot 进程里，不存在「插件在宿主、AstrBot 在容器」这种组合；下面这套只在**不想用插件、想自己跑一个独立服务**（比如给多台 AstrBot 共用、或与 AstrBot 分机器部署）时才需要。上游能力完整保留：
 
 ```bash
 docker build -t astrbot-t2i-service .
@@ -184,6 +184,8 @@ docker run -d -p 8999:8999 astrbot-t2i-service
 ```
 
 环境变量、S3/R2 存储、Prometheus 指标等与上游一致，见 [`docs/standalone/README.md`](docs/standalone/README.md) 与 [`docs/standalone/MONITORING.md`](docs/standalone/MONITORING.md)。
+
+独立服务部署在 AstrBot 之外时，AstrBot 侧的「文本转图像服务 API 地址」要写**对方可达**的地址（同机可用 `http://127.0.0.1:8999/text2img`，跨容器/跨机器用宿主机内网 IP 或域名），并在服务端配好鉴权，别把端口直接裸露在公网。
 
 ## 常见问题
 

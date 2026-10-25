@@ -13,7 +13,7 @@
       "host": {
         "description": "监听地址",
         "type": "string",
-        "hint": "AstrBot 与本插件在同一台机器时保持 127.0.0.1 即可；若 AstrBot 在容器里而插件在宿主，需改为 0.0.0.0。",
+        "hint": "插件跑在 AstrBot 进程内，和 AstrBot 天生同机同容器，保持 127.0.0.1 即可（「本插件当前地址」也按它生成）。只有想被 AstrBot 之外的机器或容器访问时才改成 0.0.0.0，并建议同时设置鉴权 Token。",
         "default": "127.0.0.1"
       },
       "port": {
@@ -25,7 +25,7 @@
       "auth_token": {
         "description": "鉴权 Token（可留空）",
         "type": "string",
-        "hint": "留空表示不校验。填写后请求需带 Authorization: Bearer <token>，用于跨机部署时防止端口裸露。",
+        "hint": "留空表示不校验。填写后请求需带 Authorization: Bearer <token>；把监听地址改成 0.0.0.0（供 AstrBot 之外的机器访问）时建议设置，避免端口裸露。",
         "default": ""
       },
       "fallback_enabled": {
