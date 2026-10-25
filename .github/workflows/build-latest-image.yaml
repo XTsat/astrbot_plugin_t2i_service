@@ -1,31 +1,69 @@
-name: Release Docker Image
+name: Test and Release
 
 on:
   push:
     branches:
       - main
-    paths:
-      - 'Dockerfile'
-      - 'docker-compose.yml'
-      - 'src/**'
-      - '.github/workflows/build-latest-image.yaml'
-      - 'main.py'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+permissions:
+  contents: read
+  packages: write
 
 jobs:
-  build:
+  test:
+    name: Test
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Login to Registry
-      run: docker login --username=${{ secrets.DOCKER_HUB_USERNAME }} --password ${{ secrets.DOCKER_HUB_PASSWORD }}
-    - name: Create Buildx
-      run: docker buildx create --name mybuilder --use
-    - name: Build
-      run: docker buildx build --platform linux/arm64,linux/amd64 -t soulter/astrbot-t2i-service:latest . --push
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # 插件层测试需要 AstrBot 的插件基类与 Web API 工具
+          pip install "astrbot>=4.16,<5" -r requirements-standalone.txt pytest pytest-asyncio
+
+      - name: Byte-compile sources
+        run: python -m compileall -q main.py t2i_core t2i_plugin service tests
+
+      - name: Run tests
+        run: python -m pytest tests -q
+
+  image:
+    name: Build standalone image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
