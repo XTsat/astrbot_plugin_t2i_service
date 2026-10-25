@@ -356,6 +356,44 @@ async def test_service_url_field_is_written_back_for_display(plugin):
     assert raw.saves == 1
 
 
+async def test_apply_endpoint_config_turns_on_t2i_output_switch(plugin):
+    """自动写入端点时一并打开 AstrBot 的「文本转图像输出」总开关。"""
+    core = RecordingConfig({"t2i": False, "t2i_endpoint": "", "t2i_strategy": "local"})
+    port = free_port()
+    raw = {
+        "server": {"enabled": False, "host": "127.0.0.1", "port": port},
+        "render": {"prelaunch": False},
+        "endpoint": {"auto_configure": True},
+        "browser": {"cleanup_orphans": False},
+    }
+    instance = plugin_main.T2IServicePlugin(FakeContext(core), raw)
+
+    await instance._apply_endpoint_config()
+
+    assert core["t2i"] is True
+    assert core["t2i_strategy"] == "remote"
+    assert core["t2i_endpoint"] == f"http://127.0.0.1:{port}/text2img"
+    assert core.saves == 1
+    assert instance._status_payload()["endpoint"]["astrbot_t2i_enabled"] is True
+
+
+async def test_apply_endpoint_config_is_noop_when_switch_off(plugin):
+    """没打开自动写入时不碰 AstrBot 主配置，也不开总开关。"""
+    core = RecordingConfig({"t2i": False, "t2i_endpoint": "", "t2i_strategy": "local"})
+    raw = {
+        "server": {"enabled": False, "host": "127.0.0.1", "port": free_port()},
+        "render": {"prelaunch": False},
+        "browser": {"cleanup_orphans": False},
+    }
+    instance = plugin_main.T2IServicePlugin(FakeContext(core), raw)
+
+    await instance._apply_endpoint_config()
+
+    assert core == {"t2i": False, "t2i_endpoint": "", "t2i_strategy": "local"}
+    assert core.saves == 0
+    assert instance._status_payload()["endpoint"]["astrbot_t2i_enabled"] is False
+
+
 # ------------------------------------------------- 安装/补装进度与失败提示
 
 

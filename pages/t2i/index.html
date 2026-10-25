@@ -171,6 +171,11 @@
           ["浏览器进程", `${browser.processes ?? 0} 个 · ${browser.process_memory_mb ?? 0} MB`],
           ["浏览器连接", renderer.connected ? "已连接" : "空闲 / 未启动", !!renderer.connected],
           ["AstrBot 端点", endpoint.astrbot_t2i_endpoint || "（未设置）"],
+          [
+            "文转图输出开关",
+            endpoint.astrbot_t2i_enabled ? "已开启" : "已关闭（AstrBot 不会调用本插件）",
+            endpoint.astrbot_t2i_enabled ? true : false,
+          ],
           ["最近错误", server.last_error || "无", server.last_error ? false : undefined],
         ]);
       }

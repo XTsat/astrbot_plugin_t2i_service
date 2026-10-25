@@ -374,20 +374,30 @@ class T2IServicePlugin(Star):
             logger.warning(f"[t2i] 预热浏览器失败：{detail}")
 
     async def _apply_endpoint_config(self) -> None:
-        """把 AstrBot 主程序的 t2i 端点指向本插件（可选）。"""
+        """按配置把 AstrBot 主程序的 t2i 端点指向本插件（可选）。"""
         if not self.settings.endpoint.auto_configure:
             return
-        endpoint = self.settings.resolve_service_url()
         try:
-            core_config = self.context.get_config()
-            core_config["t2i_endpoint"] = endpoint
-            core_config["t2i_strategy"] = "remote"
-            await _save_config(core_config)
-            logger.info(f"[t2i] 已把 AstrBot 文转图端点设置为 {endpoint}")
+            endpoint = await self._write_endpoint_to_core_config()
+            logger.info(
+                f"[t2i] 已把 AstrBot 文转图端点设置为 {endpoint}，并打开文本转图像输出"
+            )
         except Exception as exc:
             logger.warning(
                 f"[t2i] 写入 AstrBot 文转图端点失败（可在 WebUI 手动设置）：{exc}"
             )
+
+    async def _write_endpoint_to_core_config(self) -> str:
+        """把端点写进 AstrBot 主配置并打开总开关，返回写入的地址。"""
+        endpoint = self.settings.resolve_service_url()
+        core_config = self.context.get_config()
+        core_config["t2i_endpoint"] = endpoint
+        core_config["t2i_strategy"] = "remote"
+        # AstrBot 的「文本转图像输出」总开关关着时，t2i_endpoint 在它的配置页是隐藏项、
+        # 也不会被读取，只写地址等于没写；开这开关就是这个插件的用途，一并打开
+        core_config["t2i"] = True
+        await _save_config(core_config)
+        return endpoint
 
     async def _periodic_maintenance(self) -> None:
         """周期性清理过期图片 + 释放闲置 Chromium。"""
@@ -435,6 +445,7 @@ class T2IServicePlugin(Star):
                 "target": self.settings.resolve_service_url(),
                 "astrbot_t2i_endpoint": self._read_core_config("t2i_endpoint"),
                 "astrbot_t2i_strategy": self._read_core_config("t2i_strategy"),
+                "astrbot_t2i_enabled": self._read_core_flag("t2i"),
             },
         }
 
@@ -443,6 +454,12 @@ class T2IServicePlugin(Star):
             return str(self.context.get_config().get(key, ""))
         except Exception:  # pragma: no cover - 防御
             return ""
+
+    def _read_core_flag(self, key: str) -> bool:
+        try:
+            return bool(self.context.get_config().get(key, False))
+        except Exception:  # pragma: no cover - 防御
+            return False
 
     def _status_text(self) -> str:
         payload = self._status_payload()
@@ -474,7 +491,8 @@ class T2IServicePlugin(Star):
             f"插件浏览器目录：{browser['browsers_path']}",
             f"安装任务：{browser['install']['status']} - {browser['install']['message']}",
             f"AstrBot 文转图端点：{endpoint['astrbot_t2i_endpoint'] or '（未设置）'}"
-            f"（策略：{endpoint['astrbot_t2i_strategy'] or '未知'}）",
+            f"（策略：{endpoint['astrbot_t2i_strategy'] or '未知'}，"
+            f"输出开关：{'开' if endpoint['astrbot_t2i_enabled'] else '关'}）",
         ]
         if browser["deps"]["status"] != "idle":
             lines.append(
@@ -810,11 +828,7 @@ class T2IServicePlugin(Star):
 
     async def web_apply_endpoint(self):
         try:
-            core_config = self.context.get_config()
-            endpoint = self.settings.resolve_service_url()
-            core_config["t2i_endpoint"] = endpoint
-            core_config["t2i_strategy"] = "remote"
-            await _save_config(core_config)
+            endpoint = await self._write_endpoint_to_core_config()
         except Exception as exc:
             return error_response(f"写入失败：{exc}", status_code=500)
         return json_response(
@@ -823,6 +837,7 @@ class T2IServicePlugin(Star):
                 "data": {
                     "endpoint": endpoint,
                     "strategy": "remote",
+                    "enabled": True,
                     "note": "若 AstrBot 已缓存文转图策略，重启 AstrBot 后生效",
                 },
             }

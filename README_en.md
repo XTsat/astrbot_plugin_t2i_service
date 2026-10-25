@@ -89,7 +89,7 @@ Configuration groups (see `_conf_schema.json`):
 | Key | Default | Description |
 | --- | --- | --- |
 | `current_service_url` | empty | Current plugin address, filled in by the plugin from the listen address and port (default `http://127.0.0.1:8999/text2img`); display only |
-| `auto_configure` | `false` | Write the endpoint into AstrBot's config on startup |
+| `auto_configure` | `false` | Write the endpoint into AstrBot's config on startup and turn on text-to-image output |
 | `service_url` | empty | Endpoint to write; auto-derived from the listen address when empty |
 
 ### `storage`
@@ -102,17 +102,18 @@ Configuration groups (see `_conf_schema.json`):
 ## Wiring into AstrBot
 
 - **Find the address**: the `current_service_url` field under **Wire into AstrBot** is exactly what belongs in AstrBot's text-to-image API address (default `http://127.0.0.1:8999/text2img`, updated automatically when you change the listen address or port).
-- **Automatic**: enable `endpoint.auto_configure` (or click **Apply endpoint**), the plugin writes that endpoint and switches to the remote strategy.
+- **Automatic**: enable `endpoint.auto_configure` (or click **Apply endpoint**), the plugin writes that endpoint, switches to the remote strategy, and turns on AstrBot's text-to-image output switch — nothing is rendered while that switch stays off.
 - **Manual**: in AstrBot's `data/cmd_config.json`:
 
 ```jsonc
 {
+  "t2i": true,
   "t2i_strategy": "remote",
   "t2i_endpoint": "http://127.0.0.1:8999/text2img"
 }
 ```
 
-Restart AstrBot afterwards. `/t2i_status` reports whether the configured endpoint matches the plugin.
+Restart AstrBot afterwards. `/t2i_status` reports the current endpoint, strategy and whether text-to-image output is on.
 
 ## HTTP API
 
@@ -126,7 +127,7 @@ Routes are reachable under `/api/plug/astrbot_plugin_t2i_service` (legacy) and, 
 | `POST` | `/{plugin}/install` | Start Chromium download |
 | `GET` | `/{plugin}/install/state` | Download progress and logs |
 | `POST` | `/{plugin}/render-test` | Render the test card and return an image |
-| `POST` | `/{plugin}/apply-endpoint` | Write the endpoint into AstrBot's config |
+| `POST` | `/{plugin}/apply-endpoint` | Write the endpoint into AstrBot's config and turn on text-to-image output |
 | `POST` | `/{plugin}/restart` | Reload the plugin |
 | `GET` | `/{plugin}/status-card` | Status card as JSON with `data.image` base64 data URL |
 

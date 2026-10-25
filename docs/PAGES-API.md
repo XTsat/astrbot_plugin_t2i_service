@@ -255,6 +255,7 @@ resolve(response.data?.data ?? response.data);               // :384-387 自动�
         ["Chromium", d.browser?.installed ? "已安装" : "未安装", d.browser?.installed],
         ["浏览器进程", `${d.browser?.processes ?? 0} 个 / ${d.browser?.process_memory_mb ?? 0} MB`],
         ["AstrBot 端点", d.endpoint?.astrbot_t2i_endpoint || "（未设置）"],
+        ["文转图输出开关", d.endpoint?.astrbot_t2i_enabled ? "已开启" : "已关闭", d.endpoint?.astrbot_t2i_enabled],
       ];
       document.getElementById("summary").innerHTML = rows.map(([k, v, state]) => {
         const cls = state === undefined ? "" : state ? "ok" : "bad";

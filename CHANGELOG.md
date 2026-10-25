@@ -10,6 +10,7 @@
 - **缺系统运行库自动补装**：Chromium 已下载但缺系统库（报 `error while loading shared libraries: libnspr4.so` 一类错误）时，`/t2i_install` 会自动补装依赖，装完自动复查是否还有缺库；环境不满足（非 root、无 `apt-get`/`dnf`）时只给出可手动执行的命令，不报错。
 - 系统依赖可见：`/t2i_status`、状态卡片与插件页面新增「系统依赖」一行，缺哪个库直接列出来，并显示补装进度与结果。
 - 配置页直接给出本插件地址（`endpoint.current_service_url`）：随监听地址与端口自动更新，抄进 AstrBot 的「文本转图像服务 API 地址」即可，不用自己拼 `http://127.0.0.1:8999/text2img`。
+- 自动写入端点时一并打开 AstrBot 的「文本转图像输出」总开关（`endpoint.auto_configure`）：以前只填地址不改开关，开关关着时文转图仍然不生效，现在开这一个开关就能用。
 
 ### 修复
 

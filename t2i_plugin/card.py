@@ -217,7 +217,8 @@ def build_status_card(payload: dict) -> str:
         row(
             "AstrBot 端点",
             f'<span class="mono">{_esc(endpoint.get("astrbot_t2i_endpoint") or "（未设置）")}</span>'
-            f' 策略：{_esc(endpoint.get("astrbot_t2i_strategy") or "未知")}',
+            f' 策略：{_esc(endpoint.get("astrbot_t2i_strategy") or "未知")}'
+            f' 输出开关：{_esc("开" if endpoint.get("astrbot_t2i_enabled") else "关")}',
         ),
         row("浏览器目录", _esc(browser.get("browsers_path", "")), mono=True),
         row("插件运行时长", f"{uptime / 60:.1f} 分钟"),

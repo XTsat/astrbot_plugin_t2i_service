@@ -167,7 +167,7 @@
       "auto_configure": {
         "description": "启动时自动写入 AstrBot 文转图端点",
         "type": "bool",
-        "hint": "打开后插件会读取 AstrBot 配置，把它写成上面展示的地址（默认 http://127.0.0.1:8999/text2img）并将 t2i_strategy 设为 remote（300 秒空闲探测策略），重启 AstrBot 生效。",
+        "hint": "打开后插件会读取 AstrBot 配置，把它写成上面展示的地址（默认 http://127.0.0.1:8999/text2img）、将 t2i_strategy 设为 remote（300 秒空闲探测策略），并打开 AstrBot 主配置的「文本转图像输出」总开关（t2i）；这一项关闭时文转图不会生效。重启 AstrBot 生效。",
         "default": false
       },
       "service_url": {
