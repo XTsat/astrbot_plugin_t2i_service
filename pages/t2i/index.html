@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>文转图服务</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #101418;
+        --card: #191e24;
+        --item: #141a20;
+        --sunken: #0d1116;
+        --code-fg: #c7d0d9;
+        --line: #2a313a;
+        --fg: #e6e8eb;
+        --dim: #8b98a5;
+        --accent: #7cc0ff;
+        --ok: #4ade80;
+        --bad: #f87171;
+        --warn: #fbbf24;
+        --err-bg: #2a1418;
+        --err-line: #5b2730;
+        --err-fg: #ffb4b4;
+      }
+      /* 跟随 AstrBot Dashboard 主题：桥会设置 <html data-theme="light|dark"> */
+      :root[data-theme="light"] {
+        color-scheme: light;
+        --bg: #f4f5f7;
+        --card: #ffffff;
+        --item: #f7f8fa;
+        --sunken: #eef1f4;
+        --code-fg: #24292f;
+        --line: #e1e5ea;
+        --fg: #1f2328;
+        --dim: #5b6570;
+        --accent: #2f7fd6;
+        --ok: #15803d;
+        --bad: #dc2626;
+        --warn: #b45309;
+        --err-bg: #fdf0f0;
+        --err-line: #f2c7c7;
+        --err-fg: #b91c1c;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 16px;
+        background: var(--bg);
+        color: var(--fg);
+        font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", sans-serif;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px;
+        margin: 0 auto 12px;
+        max-width: 1080px;
+      }
+      .card > h2 {
+        margin: 0 0 12px;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .card > h2 .meta { margin-left: auto; font-size: 12px; color: var(--dim); font-weight: 400; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 10px;
+      }
+      .item { background: var(--item); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+      .item .k { font-size: 12px; color: var(--dim); margin-bottom: 2px; }
+      .item .v { word-break: break-all; }
+      .ok { color: var(--ok); }
+      .bad { color: var(--bad); }
+      .warn { color: var(--warn); }
+      .bar { height: 6px; background: var(--sunken); border-radius: 99px; overflow: hidden; margin: 10px 0 6px; }
+      .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s ease; }
+      pre {
+        margin: 0;
+        padding: 12px;
+        background: var(--sunken);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: auto;
+        max-height: 420px;
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        color: var(--code-fg);
+      }
+      .hint { color: var(--dim); font-size: 12px; }
+      #error { display: none; margin: 0 auto 12px; max-width: 1080px; padding: 10px 14px;
+               border-radius: 8px; background: var(--err-bg); border: 1px solid var(--err-line); color: var(--err-fg); }
+    </style>
+  </head>
+  <body>
+    <div id="error"></div>
+
+    <section class="card">
+      <h2>
+        <span id="page-title">文转图服务</span>
+        <span class="meta" id="plugin-meta">—</span>
+      </h2>
+      <div class="grid" id="status-grid">
+        <div class="item"><div class="k">状态</div><div class="v">加载中…</div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Chromium 安装 <span class="meta" id="install-meta">—</span></h2>
+      <div class="bar"><i id="install-bar"></i></div>
+      <div class="grid" id="install-grid" style="margin-top: 10px">
+        <div class="item"><div class="k">安装任务</div><div class="v" id="install-status">—</div></div>
+        <div class="item"><div class="k">已用时</div><div class="v" id="install-elapsed">—</div></div>
+      </div>
+      <p class="hint" id="install-log">—</p>
+    </section>
+
+    <section class="card">
+      <h2>原始状态 JSON <span class="meta" id="updated-at">—</span></h2>
+      <pre id="raw">加载中…</pre>
+    </section>
+
+    <script>
+      // AstrBot 注入的插件页面桥（sandbox iframe 内无法直连 Dashboard API）。
+      const bridge = window.AstrBotPluginView || window.AstrBotPluginPage || null;
+      const $ = (id) => document.getElementById(id);
+
+      function showError(message) {
+        const box = $("error");
+        box.textContent = message;
+        box.style.display = message ? "block" : "none";
+      }
+
+      function setItems(container, rows) {
+        container.innerHTML = rows
+          .map(([k, v, state]) => {
+            const cls = state === undefined ? "" : state ? "ok" : "bad";
+            return `<div class="item"><div class="k">${k}</div><div class="v ${cls}">${v}</div></div>`;
+          })
+          .join("");
+      }
+
+      function renderStatus(d) {
+        const server = d.server || {};
+        const browser = d.browser || {};
+        const renderer = d.renderer || {};
+        const endpoint = d.endpoint || {};
+        $("plugin-meta").textContent = `${d.plugin_name || "?"} v${d.plugin_version || "?"} · 运行 ${d.plugin_uptime ?? "?"}s`;
+        $("raw").textContent = JSON.stringify(d, null, 2);
+        $("updated-at").textContent = "更新于 " + new Date().toLocaleTimeString();
+        setItems($("status-grid"), [
+          ["内嵌服务", server.running ? `运行中 · ${server.endpoint || ""}` : "未运行", !!server.running],
+          ["累计请求", `${server.requests ?? 0} 次（透传 ${server.fallback_used ?? 0} 次）`],
+          ["Python playwright", browser.pip_playwright ? "已安装" : "未安装", !!browser.pip_playwright],
+          ["Chromium", browser.installed ? "已安装" : "未安装", !!browser.installed],
+          ["浏览器进程", `${browser.processes ?? 0} 个 · ${browser.process_memory_mb ?? 0} MB`],
+          ["浏览器连接", renderer.connected ? "已连接" : "空闲 / 未启动", !!renderer.connected],
+          ["AstrBot 端点", endpoint.astrbot_t2i_endpoint || "（未设置）"],
+          ["最近错误", server.last_error || "无", server.last_error ? false : undefined],
+        ]);
+      }
+
+      function renderInstall(state) {
+        const status = state.status || "idle";
+        $("install-status").textContent = `${status} · ${state.message || ""}`;
+        $("install-elapsed").textContent = `${state.elapsed ?? 0}s`;
+        $("install-meta").textContent = state.installed ? "Chromium 已就绪" : "Chromium 未就绪";
+        const lines = state.log_tail || [];
+        $("install-log").textContent = lines.length ? lines[lines.length - 1] : "（暂无日志）";
+        const progress = status === "running" ? 55 : status === "done" || state.installed ? 100 : status === "failed" ? 100 : 0;
+        const bar = $("install-bar");
+        bar.style.width = progress + "%";
+        bar.style.background = status === "failed" ? "var(--bad)" : status === "done" || state.installed ? "var(--ok)" : "var(--accent)";
+      }
+
+      async function tick() {
+        if (!bridge) return;
+        try {
+          const [status, install] = await Promise.all([
+            bridge.apiGet("status"),         // GET  …/extensions/astrbot_plugin_t2i_service/status
+            bridge.apiGet("install/state"),  // GET  …/extensions/astrbot_plugin_t2i_service/install/state
+          ]);
+          showError("");
+          renderStatus(status);
+          renderInstall(install);
+        } catch (err) {
+          showError("加载失败：" + (err && err.message ? err.message : err));
+        }
+      }
+
+      function applyI18n(ctx) {
+        if (!ctx) return;
+        const t = bridge && typeof bridge.t === "function" ? bridge.t.bind(bridge) : null;
+        if (t) {
+          // 页面目录名是 t2i：优先 pages.t2i.title（i18n_key 实测为 pages.t2i），兼容 views.t2i.title
+          $("page-title").textContent = t(
+            "pages.t2i.title",
+            t("views.t2i.title", ctx.pageTitle || "文转图服务"),
+          );
+        } else if (ctx.pageTitle) {
+          $("page-title").textContent = ctx.pageTitle;
+        }
+      }
+
+      (async () => {
+        if (!bridge) {
+          $("raw").textContent =
+            "未检测到 AstrBot 插件页面桥。请从 WebUI 的插件页面入口打开本页（/#/plugin-view/astrbot_plugin_t2i_service/t2i）。";
+          return;
+        }
+        try { await bridge.ready(); } catch (_) {}
+        applyI18n(bridge.getContext && bridge.getContext());
+        if (typeof bridge.onContext === "function") bridge.onContext(applyI18n);
+        await tick();
+        setInterval(tick, 3000);
+      })();
+    </script>
+  </body>
+</html>
