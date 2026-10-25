@@ -1,0 +1,32 @@
+AstrBot Text-to-Image Service Plugin
+Copyright 2025 AstrBot t2i-service contributors
+
+This product includes software developed at
+the AstrBotDevs / astrbot-t2i-service project
+(https://github.com/AstrBotDevs/astrbot-t2i-service),
+licensed under the Apache License, Version 2.0.
+
+Derived portions (files moved/adapted from the upstream repository):
+
+- t2i_core/api.py, t2i_core/metrics.py, t2i_core/render.py,
+  t2i_core/storage.py, t2i_core/test.py, t2i_core/util.py
+  (upstream src/*.py; imports and configuration plumbing adapted so the
+  module can run inside the AstrBot process)
+- service/main.py (upstream main.py)
+- docs/standalone/ (upstream README*.md, MONITORING.md)
+- tests/test_api.py, tests/test_metrics.py, tests/test_storage.py
+  (upstream tests, import paths adapted)
+- LICENSE (upstream Apache-2.0 license text, unchanged)
+
+Substantial changes made for this repository:
+
+- added an AstrBot plugin entry point (main.py) providing lifecycle hooks,
+  chat commands and dashboard Web APIs;
+- added t2i_plugin/ (config parsing, Chromium supply/install, embedded
+  HTTP service, status/test cards) so no external container is required;
+- added pages/t2i/ (dashboard plugin page), _conf_schema.json, metadata.yaml;
+- added tests for the plugin layer, tools/envlab/ for containerized
+  end-to-end verification, and plugin documentation.
+
+The upstream project and this port are both distributed under the Apache
+License, Version 2.0. See LICENSE for the full license text.
