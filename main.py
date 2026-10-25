@@ -257,7 +257,7 @@ class T2IServicePlugin(Star):
 
         配置页只有开关 + 保存，没有按钮，所以把开关当一次性按钮用：读到 ``True``
         就启动下载，下载结束（成功或失败）再把开关写回 ``False``；同时按本地实际
-        状态维护 ``chromium_ready``，配置页据此隐藏这个开关。
+        状态维护 ``chromium_ready``，配置页用它显示浏览器是否已就绪。
         """
         try:
             await self._sync_download_switch_state()

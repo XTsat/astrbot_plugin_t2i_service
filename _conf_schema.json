@@ -1,4 +1,59 @@
 {
+  "browser": {
+    "description": "安装 Chromium 浏览器",
+    "type": "object",
+    "hint": "第一次使用先在这里下载 Chromium：打开「下载 Chromium 浏览器」并保存配置即开始在后台安装，装好后「Chromium 已就绪」会变成开启。",
+    "items": {
+      "download_chromium": {
+        "description": "下载 Chromium 浏览器（保存配置即开始）",
+        "type": "bool",
+        "hint": "打开本开关并保存配置就会在后台下载并安装 Chromium，无需发送指令；下载结束后本开关自动关闭（成功或失败都会关）。已就绪时打开不会重复下载，开关只会被自动关掉。进度见插件页或 /t2i_status。",
+        "default": false
+      },
+      "chromium_ready": {
+        "description": "Chromium 已就绪（插件自动维护）",
+        "type": "bool",
+        "hint": "插件按本地浏览器实际状态自动写入，仅供查看：开启表示可以直接渲染，不需要再点下载。手动修改会在下次启动时被覆盖。",
+        "default": false
+      },
+      "browsers_path": {
+        "description": "浏览器安装目录（留空=插件数据目录/browsers）",
+        "type": "string",
+        "hint": "留空时使用 AstrBot 插件数据目录，卸载重装插件不会丢。",
+        "default": ""
+      },
+      "download_host": {
+        "description": "Playwright 浏览器下载源",
+        "type": "string",
+        "hint": "默认走 npmmirror 镜像，国内下载更快；留空则用官方 CDN。",
+        "default": "https://cdn.npmmirror.com/binaries/playwright"
+      },
+      "executable_path": {
+        "description": "自定义 Chromium 可执行文件路径",
+        "type": "string",
+        "hint": "仅在你想复用系统 / 其他容器里已有的 Chromium 时填写，填写后不再下载浏览器。",
+        "default": ""
+      },
+      "auto_install_deps": {
+        "description": "检测到 Chromium 缺少系统运行库时自动补装",
+        "type": "bool",
+        "hint": "缺系统库自动补装（需 root 与 apt-get/dnf）。浏览器装好了却一渲染就崩时，插件会自动补装依赖；环境不支持时只提示，不报错。",
+        "default": true
+      },
+      "cleanup_orphans": {
+        "description": "插件启动时清理残留 Chromium",
+        "type": "bool",
+        "hint": "插件被强杀后可能留下浏览器进程，打开此项可在下次启动时回收。",
+        "default": true
+      },
+      "install_timeout_seconds": {
+        "description": "浏览器安装超时（秒）",
+        "type": "int",
+        "hint": "网络较慢时可调大。",
+        "default": 900
+      }
+    }
+  },
   "server": {
     "description": "内嵌渲染服务",
     "type": "object",
@@ -39,6 +94,31 @@
         "type": "string",
         "hint": "需包含 /text2img，例如 https://t2i.rcfortress.site/text2img；自建服务填自己的地址（如 http://127.0.0.1:8999/text2img）。",
         "default": "https://t2i.rcfortress.site/text2img"
+      }
+    }
+  },
+  "endpoint": {
+    "description": "接入 AstrBot 文转图",
+    "type": "object",
+    "hint": "决定是否自动把 AstrBot 主程序的文转图端点改为本插件。",
+    "items": {
+      "current_service_url": {
+        "description": "本插件当前地址（应填入文转图 API 地址）",
+        "type": "string",
+        "hint": "由插件按上面的监听地址与监听端口自动生成，默认是 http://127.0.0.1:8999/text2img。把它填进 AstrBot 主配置的「文本转图像服务 API 地址」（t2i_endpoint）即可；打开下面的自动写入开关后无需手工填。本字段仅供查看，手动修改会在下次启动时被覆盖。",
+        "default": ""
+      },
+      "auto_configure": {
+        "description": "启动时自动写入 AstrBot 文转图端点",
+        "type": "bool",
+        "hint": "打开后插件会读取 AstrBot 配置，把它写成上面展示的地址（默认 http://127.0.0.1:8999/text2img）、将 t2i_strategy 设为 remote（300 秒空闲探测策略），并打开 AstrBot 主配置的「文本转图像输出」总开关（t2i）；这一项关闭时文转图不会生效。重启 AstrBot 生效。",
+        "default": false
+      },
+      "service_url": {
+        "description": "写入的端点地址（留空=按监听地址自动生成）",
+        "type": "string",
+        "hint": "仅在 AstrBot 通过别的主机名/端口访问本插件时才需要填写，需包含 /text2img；留空时自动生成，默认 http://127.0.0.1:8999/text2img（改端口后随之变化，具体值见上面的「本插件当前地址」）。",
+        "default": ""
       }
     }
   },
@@ -91,90 +171,6 @@
         "type": "bool",
         "hint": "关闭后只截可视区域（默认 1080p 高度），长文本可能被截断。",
         "default": true
-      }
-    }
-  },
-  "browser": {
-    "description": "Chromium 供给",
-    "type": "object",
-    "hint": "插件自带浏览器管理：可检测、下载、清理孤儿进程，避免和别的插件抢同一个 Chromium。",
-    "items": {
-      "browsers_path": {
-        "description": "浏览器安装目录（留空=插件数据目录/browsers）",
-        "type": "string",
-        "hint": "留空时使用 AstrBot 插件数据目录，卸载重装插件不会丢。",
-        "default": ""
-      },
-      "download_host": {
-        "description": "Playwright 浏览器下载源",
-        "type": "string",
-        "hint": "默认走 npmmirror 镜像，国内下载更快；留空则用官方 CDN。",
-        "default": "https://cdn.npmmirror.com/binaries/playwright"
-      },
-      "executable_path": {
-        "description": "自定义 Chromium 可执行文件路径",
-        "type": "string",
-        "hint": "仅在你想复用系统 / 其他容器里已有的 Chromium 时填写，填写后不再下载浏览器。",
-        "default": ""
-      },
-      "auto_install_deps": {
-        "description": "检测到 Chromium 缺少系统运行库时自动补装",
-        "type": "bool",
-        "hint": "缺系统库自动补装（需 root 与 apt-get/dnf）。浏览器装好了却一渲染就崩时，插件会自动补装依赖；环境不支持时只提示，不报错。",
-        "default": true
-      },
-      "download_chromium": {
-        "description": "下载 Chromium 浏览器（保存配置即开始）",
-        "type": "bool",
-        "hint": "打开本开关并保存配置就会在后台下载并安装 Chromium，无需发送指令；下载结束后本开关会自动关闭。进度见插件页或 /t2i_status。",
-        "default": false,
-        "condition": {
-          "chromium_ready": false
-        }
-      },
-      "chromium_ready": {
-        "description": "Chromium 是否已就绪（插件自动维护）",
-        "type": "bool",
-        "hint": "插件根据本地浏览器状态自动写入，无需手动修改。",
-        "default": false,
-        "invisible": true
-      },
-      "cleanup_orphans": {
-        "description": "插件启动时清理残留 Chromium",
-        "type": "bool",
-        "hint": "插件被强杀后可能留下浏览器进程，打开此项可在下次启动时回收。",
-        "default": true
-      },
-      "install_timeout_seconds": {
-        "description": "浏览器安装超时（秒）",
-        "type": "int",
-        "hint": "网络较慢时可调大。",
-        "default": 900
-      }
-    }
-  },
-  "endpoint": {
-    "description": "接入 AstrBot 文转图",
-    "type": "object",
-    "hint": "决定是否自动把 AstrBot 主程序的文转图端点改为本插件。",
-    "items": {
-      "current_service_url": {
-        "description": "本插件当前地址（应填入文转图 API 地址）",
-        "type": "string",
-        "hint": "由插件按上面的监听地址与监听端口自动生成，默认是 http://127.0.0.1:8999/text2img。把它填进 AstrBot 主配置的「文本转图像服务 API 地址」（t2i_endpoint）即可；打开下面的自动写入开关后无需手工填。本字段仅供查看，手动修改会在下次启动时被覆盖。",
-        "default": ""
-      },
-      "auto_configure": {
-        "description": "启动时自动写入 AstrBot 文转图端点",
-        "type": "bool",
-        "hint": "打开后插件会读取 AstrBot 配置，把它写成上面展示的地址（默认 http://127.0.0.1:8999/text2img）、将 t2i_strategy 设为 remote（300 秒空闲探测策略），并打开 AstrBot 主配置的「文本转图像输出」总开关（t2i）；这一项关闭时文转图不会生效。重启 AstrBot 生效。",
-        "default": false
-      },
-      "service_url": {
-        "description": "写入的端点地址（留空=按监听地址自动生成）",
-        "type": "string",
-        "hint": "仅在 AstrBot 通过别的主机名/端口访问本插件时才需要填写，需包含 /text2img；留空时自动生成，默认 http://127.0.0.1:8999/text2img（改端口后随之变化，具体值见上面的「本插件当前地址」）。",
-        "default": ""
       }
     }
   },

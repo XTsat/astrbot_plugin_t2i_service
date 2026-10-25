@@ -48,6 +48,19 @@ AstrBot 的文转图能力默认走「远端端点」（`t2i_strategy: remote` +
 
 配置项在 WebUI 插件配置页分组展示（`_conf_schema.json`）：
 
+### `browser` — 安装 Chromium 浏览器
+
+| 键 | 默认值 | 说明 |
+| --- | --- | --- |
+| `download_chromium` | `false` | 打开并保存配置即开始下载 Chromium，无需发指令；下载结束后开关自动关闭（成功或失败都会关），开关一直显示 |
+| `chromium_ready` | `false` | 是否已就绪，插件自动维护、仅供查看：开启即可直接渲染，不用再点下载 |
+| `browsers_path` | 空 | 浏览器安装目录，空则用插件数据目录 `browsers/` |
+| `download_host` | `https://cdn.npmmirror.com/binaries/playwright` | Playwright 浏览器下载源 |
+| `executable_path` | 空 | 复用系统里已有的 Chromium |
+| `auto_install_deps` | `true` | 缺系统运行库时自动补装（需 root 与 apt/dnf；环境不支持时只提示，不报错） |
+| `cleanup_orphans` | `true` | 启动时结束上次遗留的 Chromium |
+| `install_timeout_seconds` | `900` | 下载超时 |
+
 ### `server` — 内嵌渲染服务
 
 | 键 | 默认值 | 说明 |
@@ -58,6 +71,14 @@ AstrBot 的文转图能力默认走「远端端点」（`t2i_strategy: remote` +
 | `auth_token` | 空 | 非空时要求 `Authorization: Bearer <token>` |
 | `fallback_enabled` | `true` | 本机渲染失败时透传上游公共端点 |
 | `fallback_endpoint` | `https://t2i.rcfortress.site/text2img` | 透传目标（图片会下载到本地再返回；可填自建服务地址） |
+
+### `endpoint` — 接入 AstrBot
+
+| 键 | 默认值 | 说明 |
+| --- | --- | --- |
+| `current_service_url` | 空 | 本插件当前地址，插件按监听地址与端口自动写入（默认 `http://127.0.0.1:8999/text2img`），仅供查看 |
+| `auto_configure` | `false` | 启动时把端点写进 AstrBot 配置，并打开「文本转图像输出」总开关 |
+| `service_url` | 空 | 要写入的端点地址，空则按监听地址自动生成 |
 
 ### `render` — 渲染行为
 
@@ -70,27 +91,6 @@ AstrBot 的文转图能力默认走「远端端点」（`t2i_strategy: remote` +
 | `default_type` | `jpeg` | 请求未指定 `type` 时的输出格式 |
 | `default_quality` | `40` | JPEG 默认质量 |
 | `full_page` | `true` | 默认整页截图 |
-
-### `browser` — Chromium 供给
-
-| 键 | 默认值 | 说明 |
-| --- | --- | --- |
-| `browsers_path` | 空 | 浏览器安装目录，空则用插件数据目录 `browsers/` |
-| `download_host` | `https://cdn.npmmirror.com/binaries/playwright` | Playwright 浏览器下载源 |
-| `executable_path` | 空 | 复用系统里已有的 Chromium |
-| `auto_install_deps` | `true` | 缺系统运行库时自动补装（需 root 与 apt/dnf；环境不支持时只提示，不报错） |
-| `download_chromium` | `false` | 打开并保存配置即开始下载 Chromium，无需发指令；下载结束后开关自动关闭 |
-| `chromium_ready` | `false` | Chromium 是否已就绪，插件自动维护（无需手动改） |
-| `cleanup_orphans` | `true` | 启动时结束上次遗留的 Chromium |
-| `install_timeout_seconds` | `900` | 下载超时 |
-
-### `endpoint` — 接入 AstrBot
-
-| 键 | 默认值 | 说明 |
-| --- | --- | --- |
-| `current_service_url` | 空 | 本插件当前地址，插件按监听地址与端口自动写入（默认 `http://127.0.0.1:8999/text2img`），仅供查看 |
-| `auto_configure` | `false` | 启动时把端点写进 AstrBot 配置，并打开「文本转图像输出」总开关 |
-| `service_url` | 空 | 要写入的端点地址，空则按监听地址自动生成 |
 
 ### `storage` — 图片清理
 
@@ -190,7 +190,7 @@ docker run -d -p 8999:8999 astrbot-t2i-service
 ## 常见问题
 
 **Chromium 下载失败 / 很慢**
-默认已走 npmmirror 镜像；也可配置 `browser.download_host`，或先把 `PLAYWRIGHT_BROWSERS_PATH` 指向已有浏览器目录（`browser.browsers_path`）。配置页的「下载 Chromium」开关下载结束后会自动关闭：开关关掉但 `chromium_ready` 仍为否，说明这次没下成，看插件页的安装日志或 `/t2i_status`。
+默认已走 npmmirror 镜像；也可配置 `browser.download_host`，或先把 `PLAYWRIGHT_BROWSERS_PATH` 指向已有浏览器目录（`browser.browsers_path`）。配置页的「下载 Chromium」开关下载结束后会自动关闭：开关关掉但 `chromium_ready` 仍为否，说明这次没下成，看插件页的安装日志或 `/t2i_status`。装好之后这个开关仍然显示，再打开也不会重复下载，只会被自动关掉；是否就绪看它旁边的「Chromium 已就绪」。
 
 **渲染报 `BrowserType.launch: Target page, context or browser has been closed` / `error while loading shared libraries: libnspr4.so`**
 这是容器缺 Chromium 的系统运行库（浏览器本体已下载，但系统里没有它依赖的 `libnspr4`、`libnss3`、`libatk` 等）。发送 `/t2i_install` 即可自动补装（AstrBot 进程需为 root 且容器内有 `apt-get`/`dnf`）；环境不满足时它会给出可手动执行的命令。

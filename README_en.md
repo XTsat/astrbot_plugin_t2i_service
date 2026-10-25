@@ -48,6 +48,19 @@ This plugin embeds the same render service directly into AstrBot:
 
 Configuration groups (see `_conf_schema.json`):
 
+### `browser`
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `download_chromium` | `false` | Turn it on and save the config to start the Chromium download, no command needed; the switch closes itself once the download ends (success or failure) and stays visible |
+| `chromium_ready` | `false` | Whether Chromium is ready — maintained by the plugin, display only: when on you can render right away, no download needed |
+| `browsers_path` | empty | Browser install dir; defaults to the plugin data dir `browsers/` |
+| `download_host` | `https://cdn.npmmirror.com/binaries/playwright` | Playwright download host |
+| `executable_path` | empty | Reuse an existing Chromium binary |
+| `auto_install_deps` | `true` | Install missing system libraries automatically (needs root + apt/dnf; degrades to a warning when unavailable) |
+| `cleanup_orphans` | `true` | Kill leftover Chromium on startup |
+| `install_timeout_seconds` | `900` | Download timeout |
+
 ### `server`
 
 | Key | Default | Description |
@@ -58,6 +71,14 @@ Configuration groups (see `_conf_schema.json`):
 | `auth_token` | empty | When set, requires `Authorization: Bearer <token>` |
 | `fallback_enabled` | `true` | Proxy to the upstream public endpoint when local rendering fails |
 | `fallback_endpoint` | `https://t2i.rcfortress.site/text2img` | Fallback target (the image is downloaded locally before it is returned; a self-hosted URL works too) |
+
+### `endpoint`
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `current_service_url` | empty | Current plugin address, filled in by the plugin from the listen address and port (default `http://127.0.0.1:8999/text2img`); display only |
+| `auto_configure` | `false` | Write the endpoint into AstrBot's config on startup and turn on text-to-image output |
+| `service_url` | empty | Endpoint to write; auto-derived from the listen address when empty |
 
 ### `render`
 
@@ -70,27 +91,6 @@ Configuration groups (see `_conf_schema.json`):
 | `default_type` | `jpeg` | Output format when the request omits `type` |
 | `default_quality` | `40` | Default JPEG quality |
 | `full_page` | `true` | Full-page screenshots by default |
-
-### `browser`
-
-| Key | Default | Description |
-| --- | --- | --- |
-| `browsers_path` | empty | Browser install dir; defaults to the plugin data dir `browsers/` |
-| `download_host` | `https://cdn.npmmirror.com/binaries/playwright` | Playwright download host |
-| `executable_path` | empty | Reuse an existing Chromium binary |
-| `auto_install_deps` | `true` | Install missing system libraries automatically (needs root + apt/dnf; degrades to a warning when unavailable) |
-| `download_chromium` | `false` | Turn it on and save the config to start the Chromium download, no command needed; the switch closes itself once the download ends |
-| `chromium_ready` | `false` | Whether Chromium is ready — maintained by the plugin, edit it by hand at your own risk |
-| `cleanup_orphans` | `true` | Kill leftover Chromium on startup |
-| `install_timeout_seconds` | `900` | Download timeout |
-
-### `endpoint`
-
-| Key | Default | Description |
-| --- | --- | --- |
-| `current_service_url` | empty | Current plugin address, filled in by the plugin from the listen address and port (default `http://127.0.0.1:8999/text2img`); display only |
-| `auto_configure` | `false` | Write the endpoint into AstrBot's config on startup and turn on text-to-image output |
-| `service_url` | empty | Endpoint to write; auto-derived from the listen address when empty |
 
 ### `storage`
 
@@ -186,7 +186,7 @@ When the standalone service lives outside AstrBot, AstrBot's text-to-image API a
 
 ## FAQ
 
-**Chromium download is slow/fails** — the npmmirror mirror is used by default; set `browser.download_host`, or point `browser.browsers_path` at an existing `PLAYWRIGHT_BROWSERS_PATH`. The **Download Chromium** switch closes itself when the download ends: if it closed while `chromium_ready` is still false, that run failed — check the install log on the plugin page or `/t2i_status`.
+**Chromium download is slow/fails** — the npmmirror mirror is used by default; set `browser.download_host`, or point `browser.browsers_path` at an existing `PLAYWRIGHT_BROWSERS_PATH`. The **Download Chromium** switch closes itself when the download ends: if it closed while `chromium_ready` is still false, that run failed — check the install log on the plugin page or `/t2i_status`. The switch stays visible after Chromium is installed; turning it on again only flips it back off.
 
 **`BrowserType.launch: Target page, context or browser has been closed` / `error while loading shared libraries: libnspr4.so`** — the container is missing Chromium's system libraries (`libnspr4`, `libnss3`, `libatk`, ...), even though the browser itself is downloaded. Run `/t2i_install` to install them (AstrBot must run as root with `apt-get`/`dnf` available); otherwise the plugin prints the command you can run manually.
 

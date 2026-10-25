@@ -246,7 +246,7 @@ class T2IServicePlugin(Star):
 - **唯一入口**是 `T2IConfig.from_raw(dict(self._raw_config))`，产出嵌套 dataclass（`ServerConfig` / `RenderConfig` / `BrowserConfig` / `EndpointConfig` / `StorageConfig`）。业务代码读 `self.settings.render.concurrency`，**不要**到处 `self.config.get(...)`。
 - `_conf_schema.json` 是默认值的对外契约，`T2IConfig` 的默认值必须与它一致——`tests/test_plugin_config.py` 会守住这条。
 - 插件配置只读：`main.py` 把 AstrBot 下发的配置字典交给 `T2IConfig.from_raw`，自身不再散读；插件不写回自己的配置（`_conf_schema.json` 的默认值即最终默认值）。
-- **例外之一（`browser.download_chromium` / `browser.chromium_ready`）**：AstrBot 配置页只有开关 + 保存、没有按钮控件，所以「一键下载 Chromium」做成一次性开关——`main.py` 的 `_update_plugin_config` 把它收回，并回写浏览器就绪状态供 `condition` 隐藏开关。
+- **例外之一（`browser.download_chromium` / `browser.chromium_ready`）**：AstrBot 配置页只有开关 + 保存、没有按钮控件，所以「一键下载 Chromium」做成一次性开关——`main.py` 的 `_update_plugin_config` 把它收回，并回写浏览器就绪状态供配置页显示是否已就绪（开关本身常显，不用 `condition` 隐藏）。
 - **例外之二（`endpoint.current_service_url`）**：配置页没有只读文本控件，用户看不到插件实际会写入哪个地址，所以启动时由 `_sync_service_url_field()` 把算好的地址回写到该字段；它只用于展示，不参与 `resolve_service_url()` 解析，用户手改的值下次启动会被覆盖。
 - 除以上三项外不要再新增回写。
 
