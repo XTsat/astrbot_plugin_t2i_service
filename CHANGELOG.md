@@ -14,7 +14,7 @@
   - `card.py`：状态卡片与自检卡片渲染。
 - WebUI 插件页面 `pages/t2i/index.html`（状态、下载进度、渲染测试、应用端点、重载）。
 - `_conf_schema.json` 配置模式（server / render / browser / endpoint / storage 五组）。
-- `metadata.yaml` 插件元数据（状态卡片与插件页面展示的版本以此为唯一来源）。
+- `metadata.yaml` 插件元数据（状态卡片与插件页面展示的版本以此为唯一来源；插件「更新」从其中的仓库地址拉代码）。
 - 独立服务模式保留：`service/main.py` + `Dockerfile` + `requirements-standalone.txt`。
 - 测试：`tests/test_plugin_*.py`（配置、浏览器供给、内嵌服务、卡片、插件入口）与上游测试迁移，共 64 个用例。
 - 文档：`docs/APIS.md`、`docs/PAGES-API.md`、`docs/ENV-REPORT.md`、`tools/envlab/` 验证脚本。

@@ -43,7 +43,9 @@ jobs:
     name: Build standalone image
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # 独立服务镜像目前只按需发布：手动触发（workflow_dispatch）时才构建，
+    # 平时 push/PR 不会推 ghcr 镜像。
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
