@@ -1,0 +1,201 @@
+{
+  "template": "/opt/astrbot-src/astrbot/core/utils/t2i/template/base.html",
+  "template_bytes": 11553,
+  "html_bytes": 12764,
+  "out_dir": "/AstrBot/data/shots-offline",
+  "playwright": "1.64.1",
+  "viewport": {
+    "width": 900,
+    "height": 1200,
+    "device_scale_factor": 2.0
+  },
+  "full_page": true,
+  "browsers_path": "/AstrBot/data/ms-playwright",
+  "python": "3.12.15",
+  "phases_ms": {
+    "launch": 66.3,
+    "context+page": 63.0,
+    "screenshot_only_repeat": 140.5,
+    "end_to_end_cold": 61118.8
+  },
+  "runs": [
+    {
+      "index": 0,
+      "cold": true,
+      "render_ready": false,
+      "content_ready_ms": 30044.2,
+      "diagnostics": {
+        "marked": "undefined",
+        "katex": "undefined",
+        "renderMathInElement": "undefined",
+        "shiki": "undefined",
+        "content_child_count": 0,
+        "h1": 0,
+        "h2": 0,
+        "h3": 0,
+        "paragraphs": 0,
+        "code_blocks": 0,
+        "shiki_blocks": 0,
+        "tables": 0,
+        "list_items": 0,
+        "blockquotes": 0,
+        "katex_nodes": 0,
+        "checkboxes": 0,
+        "heading_rule": null,
+        "body_font_family": "MiSans, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans CJK SC\", \"Noto Sans SC\", \"Microsoft YaHei\", Arial, sans-serif",
+        "h1_font_family": "",
+        "font_status": "loaded",
+        "misans_loaded": true,
+        "cjk_chars": 0,
+        "latin_chars": 0,
+        "emoji_present": false,
+        "inner_text_len": 0,
+        "inner_text_head": "",
+        "content_height": 0,
+        "doc_scroll_width": 900,
+        "doc_scroll_height": 1200,
+        "dpr": 2
+      },
+      "diagnostics_ms": 13.6,
+      "screenshot_ms": 151.9,
+      "total_ms": 30209.7,
+      "png": "/AstrBot/data/shots-offline/offline-cold.png",
+      "png_bytes": 27447,
+      "rss_mb": 401.13,
+      "chrome_processes": 6,
+      "browser_executables": [
+        "chrome-headless-shell",
+        "chrome-headless-shell --type=gpu-process --gpu-recent-crash-count=0 --no-sandbox --disable-dev-shm-usage --disable-breakpad --headless --ozone-platform=headless --use-angle=swiftshader-webgl --enable-unsafe-swiftshader --gpu-preferences=YAAAAAAAAAAgAAAEAAAAAAAAAAAAAGAASAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAMAAAAAQAAAAAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --shared-files --field-trial-handle=3,i,8428966322690394291,8841228504784342467,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaC",
+        "chrome-headless-shell --type=renderer --headless=old --no-sandbox --disable-dev-shm-usage --disable-back-forward-cache --disable-background-timer-throttling --disable-breakpad --force-color-profile=srgb --remote-debugging-pipe --allow-pre-commit-input --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --ozone-platform=headless --disable-gpu-compositing --lang=en-US --num-raster-threads=2 --enable-main-frame-before-activation --renderer-client-id=4 --launch-time-ticks=19054738597 --shared-files=v8_context_snapshot_data:100 --field-trial-handle=3,i,8428966322690394291,8841228504784342467,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoa",
+        "chrome-headless-shell --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --no-sandbox --disable-dev-shm-usage --use-angle=swiftshader-webgl --use-gl=angle --mute-audio --headless=old --shared-files=v8_context_snapshot_data:100 --field-trial-handle=3,i,8428966322690394291,8841228504784342467,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=7,i,7280224671503496718,6765214183955590675,4 --trace-process-track-uuid=3190708989122997041",
+        "chrome-headless-shell --type=zygote --no-sandbox --headless",
+        "chrome-headless-shell --type=zygote --no-zygote-sandbox --no-sandbox --headless"
+      ]
+    },
+    {
+      "index": 1,
+      "cold": false,
+      "render_ready": false,
+      "content_ready_ms": 30017.5,
+      "diagnostics": {
+        "marked": "undefined",
+        "katex": "undefined",
+        "renderMathInElement": "undefined",
+        "shiki": "undefined",
+        "content_child_count": 0,
+        "h1": 0,
+        "h2": 0,
+        "h3": 0,
+        "paragraphs": 0,
+        "code_blocks": 0,
+        "shiki_blocks": 0,
+        "tables": 0,
+        "list_items": 0,
+        "blockquotes": 0,
+        "katex_nodes": 0,
+        "checkboxes": 0,
+        "heading_rule": null,
+        "body_font_family": "MiSans, -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans CJK SC\", \"Noto Sans SC\", \"Microsoft YaHei\", Arial, sans-serif",
+        "h1_font_family": "",
+        "font_status": "loaded",
+        "misans_loaded": true,
+        "cjk_chars": 0,
+        "latin_chars": 0,
+        "emoji_present": false,
+        "inner_text_len": 0,
+        "inner_text_head": "",
+        "content_height": 0,
+        "doc_scroll_width": 900,
+        "doc_scroll_height": 1200,
+        "dpr": 2
+      },
+      "diagnostics_ms": 1.8,
+      "screenshot_ms": 159.0,
+      "total_ms": 30178.3,
+      "png": "/AstrBot/data/shots-offline/offline-warm1.png",
+      "png_bytes": 27447,
+      "rss_mb": 401.41,
+      "chrome_processes": 6,
+      "browser_executables": [
+        "chrome-headless-shell",
+        "chrome-headless-shell --type=gpu-process --gpu-recent-crash-count=0 --no-sandbox --disable-dev-shm-usage --disable-breakpad --headless --ozone-platform=headless --use-angle=swiftshader-webgl --enable-unsafe-swiftshader --gpu-preferences=YAAAAAAAAAAgAAAEAAAAAAAAAAAAAGAASAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAMAAAAAQAAAAAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --shared-files --field-trial-handle=3,i,8428966322690394291,8841228504784342467,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaC",
+        "chrome-headless-shell --type=renderer --headless=old --no-sandbox --disable-dev-shm-usage --disable-back-forward-cache --disable-background-timer-throttling --disable-breakpad --force-color-profile=srgb --remote-debugging-pipe --allow-pre-commit-input --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --ozone-platform=headless --disable-gpu-compositing --lang=en-US --num-raster-threads=2 --enable-main-frame-before-activation --renderer-client-id=4 --launch-time-ticks=19054738597 --shared-files=v8_context_snapshot_data:100 --field-trial-handle=3,i,8428966322690394291,8841228504784342467,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoa",
+        "chrome-headless-shell --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --no-sandbox --disable-dev-shm-usage --use-angle=swiftshader-webgl --use-gl=angle --mute-audio --headless=old --shared-files=v8_context_snapshot_data:100 --field-trial-handle=3,i,8428966322690394291,8841228504784342467,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=7,i,7280224671503496718,6765214183955590675,4 --trace-process-track-uuid=3190708989122997041",
+        "chrome-headless-shell --type=zygote --no-sandbox --headless",
+        "chrome-headless-shell --type=zygote --no-zygote-sandbox --no-sandbox --headless"
+      ]
+    }
+  ],
+  "external_failures": [
+    {
+      "url": "https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css",
+      "failure": "net::ERR_FAILED"
+    },
+    {
+      "url": "https://fonts.googleapis.com/css2?family=Outfit:wght@400..700&display=swap",
+      "failure": "net::ERR_FAILED"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/npm/misans@4.1.0/lib/Normal/MiSans-Regular.min.css",
+      "failure": "net::ERR_FAILED"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/npm/misans@4.1.0/lib/Normal/MiSans-Bold.min.css",
+      "failure": "net::ERR_FAILED"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js",
+      "failure": "net::ERR_FAILED"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/contrib/auto-render.min.js",
+      "failure": "net::ERR_FAILED"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/npm/marked/marked.min.js",
+      "failure": "net::ERR_FAILED"
+    }
+  ],
+  "console_errors": [
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: net::ERR_FAILED"
+  ],
+  "block_external": true,
+  "blocked_external_requests": [
+    "https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/contrib/auto-render.min.js",
+    "https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css",
+    "https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.js",
+    "https://cdn.jsdelivr.net/npm/marked/marked.min.js",
+    "https://cdn.jsdelivr.net/npm/misans@4.1.0/lib/Normal/MiSans-Bold.min.css",
+    "https://cdn.jsdelivr.net/npm/misans@4.1.0/lib/Normal/MiSans-Regular.min.css",
+    "https://fonts.googleapis.com/css2?family=Outfit:wght@400..700&display=swap"
+  ],
+  "browser_version": "156.0.8078.4",
+  "rss_after_launch": {
+    "mb": 364.71,
+    "processes": 6,
+    "executables": [
+      "chrome-headless-shell",
+      "chrome-headless-shell --type=gpu-process --gpu-recent-crash-count=0 --no-sandbox --disable-dev-shm-usage --disable-breakpad --headless --ozone-platform=headless --use-angle=swiftshader-webgl --enable-unsafe-swiftshader --gpu-preferences=YAAAAAAAAAAgAAAEAAAAAAAAAAAAAGAASAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAMAAAAAQAAAAAAAAAAAAAACAAAAAAAAAAIAAAAAAAAAA== --shared-files --field-trial-handle=3,i,8428966322690394291,8841228504784342467,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaC",
+      "chrome-headless-shell --type=renderer --headless=old --no-sandbox --disable-dev-shm-usage --disable-back-forward-cache --disable-background-timer-throttling --disable-breakpad --force-color-profile=srgb --remote-debugging-pipe --allow-pre-commit-input --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --ozone-platform=headless --disable-gpu-compositing --lang=en-US --num-raster-threads=2 --enable-main-frame-before-activation --renderer-client-id=4 --launch-time-ticks=19054738597 --shared-files=v8_context_snapshot_data:100 --field-trial-handle=3,i,8428966322690394291,8841228504784342467,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoa",
+      "chrome-headless-shell --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --no-sandbox --disable-dev-shm-usage --use-angle=swiftshader-webgl --use-gl=angle --mute-audio --headless=old --shared-files=v8_context_snapshot_data:100 --field-trial-handle=3,i,8428966322690394291,8841228504784342467,262144 --enable-features=CDPScreenshotNewSurface --disable-features=AimEnabled,AutoDeElevate,AvoidCorsURLLoaderRestartOnRedirect,AvoidUnnecessaryBeforeUnloadCheckSync,BlockOriginHeaderModificationOnRedirect,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,NetworkTimeServiceQuerying,OptimizationHints,PaintHolding,ThirdPartyStoragePartitioning,Translate,msEdgeUpdateLaunchServicesPreferredVersion,msForceBrowserSignIn --variations-seed-version --pseudonymization-salt-handle=7,i,7280224671503496718,6765214183955590675,4 --trace-process-track-uuid=3190708989122997041",
+      "chrome-headless-shell --type=zygote --no-sandbox --headless",
+      "chrome-headless-shell --type=zygote --no-zygote-sandbox --no-sandbox --headless"
+    ]
+  },
+  "self_rss_mb": 38.05,
+  "blocked_external_count": 14,
+  "wall_clock_ms": 61197.6
+}
