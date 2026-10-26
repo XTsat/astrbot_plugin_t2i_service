@@ -83,6 +83,19 @@ def normalize_render_url(url: str) -> str:
     return url
 
 
+def _format_body_size(size: int | None) -> str:
+    """把请求体字节数写成日志里好读的尺寸。
+
+    报告 HTML 常有几 MB，只报 KB 反而不直观；没有 Content-Length（分块传输）时
+    明确写「未知」，避免显示成 0 KB 误导排查。
+    """
+    if not size:
+        return "未知"
+    if size >= 1024 * 1024:
+        return f"{size / 1024 / 1024:.1f} MB"
+    return f"{round(size / 1024)} KB"
+
+
 SERVER_REGISTRY_ATTR = "__t2i_service_servers__"
 PORT_BIND_RETRY_SECONDS = 6.0
 PORT_BIND_RETRY_INTERVAL = 0.5
@@ -389,6 +402,7 @@ class T2IHttpServer:
     async def handle_generate(self, request: web.Request) -> web.Response:
         started = time.perf_counter()
         status = "500"
+        size = request.content_length
         try:
             if not self._authorized(request):
                 status = "401"
@@ -405,13 +419,26 @@ class T2IHttpServer:
             response = await self._handle_payload(payload)
             status = str(response.status)
             return response
+        except Exception as exc:  # noqa: BLE001 - 见下
+            # 漏网异常会被 aiohttp 兜成纯文本 500，调用方只看到「Server got itself
+            # in trouble」而服务端留不下任何原因。这里只补日志、不改响应形态。
+            self.last_error = f"处理渲染请求时发生未捕获异常：{exc}"
+            logger.exception(f"[t2i] {self.last_error}")
+            raise
         finally:
+            elapsed = time.perf_counter() - started
             HTTP_REQUESTS.labels(
                 method="POST", route="/text2img/generate", status_code=status
             ).inc()
             HTTP_REQUEST_DURATION.labels(
                 method="POST", route="/text2img/generate"
-            ).observe(time.perf_counter() - started)
+            ).observe(elapsed)
+            # 这一行代替 aiohttp 的 access_log（后者写进 stdlib logging，AstrBot 的
+            # 日志页看不到）。出问题时至少能对齐「何时、多大的请求、多久返回、什么状态」。
+            logger.info(
+                f"[t2i] POST /text2img/generate → {status}"
+                f"（{elapsed:.1f}s，请求体 {_format_body_size(size)}）"
+            )
             self.requests_served += 1
             self.last_request_at = time.time()
 

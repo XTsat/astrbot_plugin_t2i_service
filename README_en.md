@@ -177,7 +177,7 @@ Check that `t2i_endpoint` still targets the plugin's listen address; `/t2i_statu
 Chromium takes ~200 MB in the plugin data directory; rendered images are kept 24 hours and cleaned on a timer.
 
 **Where are the logs**
-Render and cleanup logs sit together with the plugin's other logs — filter the AstrBot log by the plugin name or the `[t2i]` prefix. Successful renders do not log HTML content.
+Render and cleanup logs sit together with the plugin's other logs — filter the AstrBot log by the plugin name or the `[t2i]` prefix. Successful renders do not log HTML content. Every generation leaves an access line (`POST /text2img/generate → status`, with duration and request size); a failed render records the reason and the traceback next to it, so you can match the two by timestamp.
 
 ## Development
 

@@ -173,6 +173,76 @@ async def test_invalid_options_are_400(client):
     assert "invalid options" in (await resp.json())["message"]
 
 
+async def test_escaped_exception_is_logged_and_keeps_response_shape(
+    client, monkeypatch
+):
+    """漏网异常照旧是 aiohttp 的 500 纯文本，但服务端必须留下一条带堆栈的日志。
+
+    事故现场：渲染失败只是个起点，真正让日志全空的是记日志那行自己抛了异常。
+    """
+    test_client, server, _ = client
+    records: list[tuple[str, str]] = []
+
+    class RecordingLogger:
+        def debug(self, message: str, *args: object, **kwargs: object) -> None:
+            records.append(("debug", message))
+
+        def info(self, message: str, *args: object, **kwargs: object) -> None:
+            records.append(("info", message))
+
+        def warning(self, message: str, *args: object, **kwargs: object) -> None:
+            records.append(("warning", message))
+
+        def error(self, message: str, *args: object, **kwargs: object) -> None:
+            records.append(("error", message))
+
+        def exception(self, message: str, *args: object, **kwargs: object) -> None:
+            records.append(("exception", message))
+
+    async def boom(payload: dict):
+        raise RuntimeError("磁盘写满")
+
+    monkeypatch.setattr(t2i_server, "logger", RecordingLogger())
+    monkeypatch.setattr(server, "_handle_payload", boom)
+    resp = await test_client.post("/text2img/generate", json={"html": "<p>x</p>"})
+
+    assert resp.status == 500
+    levels = [level for level, _ in records]
+    assert "exception" in levels
+    assert any("磁盘写满" in message for _, message in records)
+    # 访问日志仍然照写，失败也能对上时间线
+    assert any("POST /text2img/generate" in message for _, message in records)
+
+
+async def test_every_request_leaves_an_access_log_line(client, monkeypatch):
+    """aiohttp 的 access_log 写进 stdlib logging，插件日志页看不到，必须自己写一条。"""
+    test_client, _, _ = client
+    records: list[tuple[str, str]] = []
+
+    class RecordingLogger:
+        def debug(self, message: str, *args: object, **kwargs: object) -> None:
+            records.append(("debug", message))
+
+        def info(self, message: str, *args: object, **kwargs: object) -> None:
+            records.append(("info", message))
+
+        def warning(self, message: str, *args: object, **kwargs: object) -> None:
+            records.append(("warning", message))
+
+        def error(self, message: str, *args: object, **kwargs: object) -> None:
+            records.append(("error", message))
+
+        def exception(self, message: str, *args: object, **kwargs: object) -> None:
+            records.append(("exception", message))
+
+    monkeypatch.setattr(t2i_server, "logger", RecordingLogger())
+    resp = await test_client.post("/text2img/generate", json={"html": "<p>x</p>"})
+    assert resp.status == 200
+
+    lines = [message for _, message in records]
+    assert any("POST /text2img/generate" in line and "200" in line for line in lines)
+
+
 async def test_security_error_from_template_is_400(client, monkeypatch):
     test_client, _, renderer = client
     from jinja2.exceptions import SecurityError
