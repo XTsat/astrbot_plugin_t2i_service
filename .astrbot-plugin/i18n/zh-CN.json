@@ -160,9 +160,7 @@
         "nothingDelete": "这个家族还没有安装字体文件，无需删除",
         "armDelete": "再点一次确认删除",
         "armDeleteMany": "再点一次删除「{name}」的 {count} 个字体文件",
-        "armDownload": "再点一次开始下载 {count} 个字体家族",
-        "armDeleteShared": "再点一次删除「{name}」的 {count} 个字体文件；{affected} 还在用，删掉后它们会缺字体。只想删其中某个字体的话，到下面「单个字体家族」里手动删掉 {shared}",
-        "armDeleteFamilyShared": "再点一次删除「{name}」的 {count} 个字体文件；{affected} 还在用，删掉后它们会缺字体"
+        "armDownload": "再点一次开始下载 {count} 个字体家族"
       },
       "error": {
         "generic": "请求失败，请查看 AstrBot 日志",

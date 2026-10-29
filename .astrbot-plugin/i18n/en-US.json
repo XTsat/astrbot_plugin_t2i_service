@@ -160,9 +160,7 @@
         "nothingDelete": "No font files are installed for this family",
         "armDelete": "Click again to delete",
         "armDeleteMany": "Click again to delete the {count} font files of {name}",
-        "armDownload": "Click again to download {count} font families",
-        "armDeleteShared": "Click again to delete {count} file(s) of “{name}”. {affected} still use them and will miss fonts. To remove a single font instead, delete {shared} from the family list below",
-        "armDeleteFamilyShared": "Click again to delete {count} file(s) of “{name}”. {affected} still use them and will miss fonts"
+        "armDownload": "Click again to download {count} font families"
       },
       "error": {
         "generic": "Request failed, see the AstrBot log",
