@@ -1,4 +1,4 @@
-"""文转图服务面板的后端 Web API（AstrBot Plugin View 桥）。
+"""渲染字体页面的后端 Web API（AstrBot Plugin View 桥）。
 
 页面本身是 ``views/fonts/index.html``，通过 ``window.AstrBotPluginView`` 调用
 这里的接口。AstrBot 要求注册的路由带插件名前缀，而页面里的 endpoint 不带，
@@ -72,7 +72,7 @@ class FontWebApi:
         if not WEB_API_AVAILABLE or not callable(register):
             logger.warning(
                 "[t2i] 当前 AstrBot 版本不支持插件页面 Web API，"
-                "文转图服务面板不可用（字体目录与配置项仍然有效）"
+                "渲染字体页面不可用（字体目录与配置项仍然有效）"
             )
             return []
         routes: list[tuple[str, Callable[[], Awaitable[object]], list[str], str]] = [

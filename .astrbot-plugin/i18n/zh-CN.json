@@ -6,12 +6,12 @@
   },
   "views": {
     "fonts": {
-      "title": "文转图服务面板"
+      "title": "渲染字体"
     }
   },
   "pages": {
     "fonts": {
-      "title": "文转图服务面板",
+      "title": "渲染字体",
       "boot": "正在连接插件…",
       "subtitle": "为文转图渲染提供字体，不会改动上游渲染逻辑。字体放在插件数据目录的 <code>fonts/</code> 下，渲染进程启动时自动生效。",
       "action": {

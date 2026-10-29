@@ -43,7 +43,7 @@ For a first run entirely in chat, go `/t2i_status` → `/t2i_install` → `/t2i_
 
 Templates ask for family names such as `Noto Serif SC` or `Inter`, which a server may not have; without them the template silently falls back to a default font and the layout drifts. This plugin supplies fonts as well: font files live under `fonts/` in the plugin data directory and Chromium picks them up while rendering — **no template edits and no system-wide font installation**.
 
-Where: WebUI plugin details → the **T2I Service Panel** page. It has two tabs: **Overview** (font library stats and job progress, plus upload, link, delete and preview) and **Upstream project** (whole template sets and the single-family list for the project it integrates with, with a second-level tab naming the project); the text inside each tab links to the other one, and the page says so when `fonts.enabled` is off. The page follows the AstrBot console: colors track its light/dark theme and the copy follows the interface language (Chinese/English); a row of chips at the top shows whether fonts are in effect and any running job, and a failed load explains why and offers **Retry**.
+Where: WebUI plugin details → the **Render Fonts** page. It has two tabs: **Overview** (font library stats and job progress, plus upload, link, delete and preview) and **Upstream project** (whole template sets and the single-family list for the project it integrates with, with a second-level tab naming the project); the text inside each tab links to the other one, and the page says so when `fonts.enabled` is off. The page follows the AstrBot console: colors track its light/dark theme and the copy follows the interface language (Chinese/English); a row of chips at the top shows whether fonts are in effect and any running job, and a failed load explains why and offers **Retry**.
 
 **Overview** (stats, jobs, upload, download by link, delete, preview)
 
@@ -117,7 +117,7 @@ The plugin config page shows the five groups below; the **Default** column is wh
 
 ### Fonts (`fonts`)
 
-Downloading, uploading and removing font files all happen on the **T2I Service Panel** page; the config page only keeps the switch and source settings.
+Downloading, uploading and removing font files all happen on the **Render Fonts** page; the config page only keeps the switch and source settings.
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -207,7 +207,7 @@ Change **Listen port**, then re-enable **Write AstrBot's text-to-image endpoint 
 Check that `t2i_endpoint` still targets the plugin's listen address; `/t2i_status` shows the address the plugin actually uses when the port was changed and not synced.
 
 **A font is installed but the template still uses something else**
-Click **Render preview** under **Overview** on the T2I Service Panel page (click the family names first to compare only those): each row is one font, and if several rows look identical none of those fonts are in effect. The usual causes are a render process that has not restarted yet (the **Restart the browser after font changes** option is off, or press **Reload fonts**) or a file that is really a renamed web page or archive — uploads and downloads both check the font file header. Note also that templates ask for `Noto Sans SC` while a system package provides `Noto Sans CJK SC`; one cannot stand in for the other.
+Click **Render preview** under **Overview** on the Render Fonts page (click the family names first to compare only those): each row is one font, and if several rows look identical none of those fonts are in effect. The usual causes are a render process that has not restarted yet (the **Restart the browser after font changes** option is off, or press **Reload fonts**) or a file that is really a renamed web page or archive — uploads and downloads both check the font file header. Note also that templates ask for `Noto Sans SC` while a system package provides `Noto Sans CJK SC`; one cannot stand in for the other.
 
 **Disk usage**
 Chromium takes ~200 MB in the plugin data directory; rendered images are kept 24 hours and cleaned on a timer. Fonts add up per family — a full template set usually costs 20–60 MB.

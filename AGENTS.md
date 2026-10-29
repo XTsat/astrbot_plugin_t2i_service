@@ -35,7 +35,7 @@
 | `service/main.py` | ✅ | 独立服务（FastAPI）入口；插件模式下不执行 |
 | `tests/` | ✅ | pytest 套件（核心层 + 插件层），CI 主线 |
 | `.astrbot-plugin/i18n/` | 可选 | 元数据与页面 i18n（`zh-CN.json` / `en-US.json`），已存在 |
-| `views/` | 可选 | 插件内嵌页面（AstrBot 会自动发现 `views/<名字>/index.html`）；当前只有 `fonts/`（「文转图服务面板」：概览 / 对接项目两栏切换，共用一次清单请求） |
+| `views/` | 可选 | 插件内嵌页面（AstrBot 会自动发现 `views/<名字>/index.html`）；当前只有 `fonts/`（「渲染字体」页面：概览 / 对接项目两栏切换，共用一次清单请求） |
 | `docs/` | 可选 | 接口文档（`APIS.md`）、环境基线（`ENV-REPORT.md`）、独立服务文档与 README 配图 |
 | `tools/envlab/` | 可选 | 环境基线与抓图脚本，非运行时依赖 |
 | `pyproject.toml` | 可选 | 开发/独立服务依赖与 pytest 配置 |
@@ -106,7 +106,7 @@ service/main.py ─────────────────────�
 | 浏览器供给（检测、下载、清理） | `t2i_plugin/browser.py` |
 | 卡片用的 HTML 片段 | `t2i_plugin/card.py` |
 | 字体下载/上传/fontconfig 供给 | `t2i_plugin/fonts.py` |
-| 文转图服务面板的 Web API | `t2i_plugin/font_web.py` |
+| 渲染字体页面的 Web API | `t2i_plugin/font_web.py` |
 | 字体页面（插件内嵌页面） | `views/fonts/`（一个页面，tab 切换「概览」与「对接项目」，「对接项目」栏里再用二级 tab 显示上游项目名；栏位切换按 DOM 里的 tab/panel 配对自动接管，加栏位只改 HTML，不要再拆视图；配色只跟随桥写到 `<html data-theme>` 的浅/深色，文案一律走 `pages.fonts.*` 的 i18n，不在 JS 里写死中文） |
 | HTTP 契约、鉴权、失败透传 | `t2i_plugin/server.py` |
 | 渲染与截图行为、模板处理 | `t2i_core/render.py` |
@@ -239,7 +239,7 @@ class T2IServicePlugin(Star):
 | `browser` | `browsers_path`、`download_host`、`executable_path`、`auto_install_deps`、`cleanup_orphans`、`install_timeout_seconds` | 浏览器供给 |
 | `endpoint` | `auto_configure`、`service_url`、`current_service_url`（展示用，插件回写） | 是否写 AstrBot 主配置 |
 | `storage` | `image_lifetime_hours`、`cleanup_interval_minutes` | 图片留存与清理 |
-| `fonts` | `enabled`、`github_proxy`、`upload_limit_mb`、`restart_browser_on_change` | 字体供给（下载/上传在插件页面的「文转图服务面板」里做） |
+| `fonts` | `enabled`、`github_proxy`、`upload_limit_mb`、`restart_browser_on_change` | 字体供给（下载/上传在插件页面的「渲染字体」里做） |
 
 - 新增配置项 → 先在 `_conf_schema.json` 补 schema（type/hint/default/options），再在 `t2i_plugin/config.py` 加 dataclass 字段与默认值，最后补 README 配置表。
 - 配置项在文档（README 配置表、CHANGELOG）中引用时，**中文名在前、英文 key 在后**：统一写成「中文名（`key`）」形式，例如「并发渲染数（`render.concurrency`）」「鉴权令牌（`server.auth_token`）」；中文名取自 `_conf_schema.json` 的 `hint` 字段，`key` 用反引号包裹。

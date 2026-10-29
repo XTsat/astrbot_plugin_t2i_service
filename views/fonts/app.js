@@ -1,4 +1,4 @@
-// 文转图服务面板：一个页面分栏切换——「概览」（统计 / 任务 / 上传 / 链接下载 / 预览）
+// 渲染字体页：一个页面分栏切换——「概览」（统计 / 任务 / 上传 / 链接下载 / 预览）
 // 与对接栏位（对接项目的模板整套 + 单家族清单）。栏位按 DOM 里的 tab/panel 配对
 // 现读，加栏位只改 index.html；各栏共用同一次清单请求，切换只做显隐，栏位状态记在
 // 地址 hash 里（#upstream 可直接打开第二栏）。
@@ -128,7 +128,7 @@ function applyI18n() {
       t(el.dataset.i18nAriaLabel, el.getAttribute("aria-label") || ""),
     );
   }
-  document.title = t("title", "文转图服务面板");
+  document.title = t("title", "渲染字体");
 }
 
 /** 语言变了要重写静态文案，动态区块（统计、清单）跟着重渲染一次。 */

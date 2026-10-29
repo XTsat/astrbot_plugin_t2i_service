@@ -316,7 +316,7 @@ def build_font_specimen(
         )
     if not blocks:
         body_inner = (
-            '<div class="empty">还没有安装任何字体。请先在插件页「文转图服务面板」的「概览」'
+            '<div class="empty">还没有安装任何字体。请先在插件页「渲染字体」的「概览」'
             "下载或上传字体。</div>"
         )
     else:

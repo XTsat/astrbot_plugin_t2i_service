@@ -793,7 +793,7 @@ class T2IServicePlugin(Star):
             f"{status['total_text']}",
             f"fontconfig：{'已接管' if status['env_active'] else '未生效'}"
             f"；fc-cache：{'可用' if status['fc_cache'] else '不可用'}",
-            "下载预置字体、按链接下载、上传字体：WebUI 插件详情页的「文转图服务面板」页面",
+            "下载预置字体、按链接下载、上传字体：WebUI 插件详情页的「渲染字体」页面",
         ]
         yield event.plain_result("\n".join(lines))
 

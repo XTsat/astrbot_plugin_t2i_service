@@ -6,12 +6,12 @@
   },
   "views": {
     "fonts": {
-      "title": "T2I Service Panel"
+      "title": "Render Fonts"
     }
   },
   "pages": {
     "fonts": {
-      "title": "T2I Service Panel",
+      "title": "Render Fonts",
       "boot": "Connecting to the plugin…",
       "subtitle": "Provides fonts for text-to-image rendering without touching the upstream render logic. Font files live under <code>fonts/</code> in the plugin data directory and take effect when the render process starts.",
       "action": {
