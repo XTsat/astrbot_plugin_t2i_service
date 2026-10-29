@@ -485,11 +485,15 @@ class T2IServicePlugin(Star):
             logger.warning(f"[t2i] 重启渲染进程失败：{exc}")
 
     async def _render_font_specimen(
-        self, families: list[str], scale: str = "normal"
+        self,
+        families: list[str],
+        scale: str = "normal",
+        text: str = "",
+        weights: str = "both",
     ) -> tuple[bool, str]:
         """渲染字体预览卡片，返回（是否成功, 图片路径或错误信息）。"""
         return await self.server.render_probe(
-            build_font_specimen(families),
+            build_font_specimen(families, text, weights),
             width=FONT_SPECIMEN_WIDTH,
             scale=scale,
         )
@@ -789,7 +793,7 @@ class T2IServicePlugin(Star):
             f"{status['total_text']}",
             f"fontconfig：{'已接管' if status['env_active'] else '未生效'}"
             f"；fc-cache：{'可用' if status['fc_cache'] else '不可用'}",
-            "下载预置字体、按链接下载、上传字体：WebUI 插件详情页的「渲染字体」页面",
+            "下载预置字体、按链接下载、上传字体：WebUI 插件详情页的「文转图服务面板」页面",
         ]
         yield event.plain_result("\n".join(lines))
 

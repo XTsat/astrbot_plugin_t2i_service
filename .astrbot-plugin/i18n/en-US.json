@@ -6,12 +6,12 @@
   },
   "views": {
     "fonts": {
-      "title": "Render Fonts"
+      "title": "T2I Service Panel"
     }
   },
   "pages": {
     "fonts": {
-      "title": "Render Fonts",
+      "title": "T2I Service Panel",
       "boot": "Connecting to the plugin…",
       "subtitle": "Provides fonts for text-to-image rendering without touching the upstream render logic. Font files live under <code>fonts/</code> in the plugin data directory and take effect when the render process starts.",
       "action": {
@@ -69,7 +69,7 @@
         },
         "specimen": {
           "title": "Font specimen self-check",
-          "hint": "The plugin's own renderer draws one line per selected family; with nothing selected it compares every installed font. If a line looks identical to the others, that font is not really in effect.",
+          "hint": "Renders one line per selected family with the plugin renderer; with nothing selected every installed font is compared. Use the box above to compare specific characters. If a line looks identical to the others, that font is not really in effect.",
           "action": "Render specimen",
           "busy": "Rendering…",
           "alt": "Font specimen",
@@ -78,7 +78,12 @@
           "scaleAria": "Preview resolution",
           "scaleNormal": "Standard",
           "scaleHigh": "High",
-          "scaleUltra": "Ultra"
+          "scaleUltra": "Ultra",
+          "textPlaceholder": "Custom text to compare (empty = default sentence)",
+          "weightAria": "Weight",
+          "weightBoth": "Both",
+          "weightRegular": "Regular",
+          "weightBold": "Bold"
         },
         "upload": {
           "action": "Upload font",
@@ -160,7 +165,9 @@
         "nothingDelete": "No font files are installed for this family",
         "armDelete": "Click again to delete",
         "armDeleteMany": "Click again to delete the {count} font files of {name}",
-        "armDownload": "Click again to download {count} font families"
+        "armDownload": "Click again to download {count} font families",
+        "armDeleteShared": "Click again to delete {count} file(s) of “{name}”. {affected} still use them and will miss fonts. To remove a single font instead, delete {shared} from the family list below",
+        "armDeleteFamilyShared": "Click again to delete {count} file(s) of “{name}”. {affected} still use them and will miss fonts"
       },
       "error": {
         "generic": "Request failed, see the AstrBot log",

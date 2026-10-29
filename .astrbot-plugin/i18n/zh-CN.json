@@ -6,12 +6,12 @@
   },
   "views": {
     "fonts": {
-      "title": "渲染字体"
+      "title": "文转图服务面板"
     }
   },
   "pages": {
     "fonts": {
-      "title": "渲染字体",
+      "title": "文转图服务面板",
       "boot": "正在连接插件…",
       "subtitle": "为文转图渲染提供字体，不会改动上游渲染逻辑。字体放在插件数据目录的 <code>fonts/</code> 下，渲染进程启动时自动生效。",
       "action": {
@@ -69,7 +69,7 @@
         },
         "specimen": {
           "title": "字体预览自检",
-          "hint": "用插件自己的渲染服务把选中的家族各画一行；不点选就是对比全部已装字体。若某一行与其它行字形完全相同，说明该字体没有真正生效。",
+          "hint": "用插件自己的渲染服务把选中的家族各画一行；不点选就是对比全部已装字体。上面的输入框可以填想专门对比的字词。若某一行与其它行字形完全相同，说明该字体没有真正生效。",
           "action": "渲染预览图",
           "busy": "渲染中…",
           "alt": "字体预览",
@@ -78,7 +78,12 @@
           "scaleAria": "预览图清晰度",
           "scaleNormal": "标准",
           "scaleHigh": "高清",
-          "scaleUltra": "超清"
+          "scaleUltra": "超清",
+          "textPlaceholder": "自定义对比文字（留空用默认样句）",
+          "weightAria": "字重",
+          "weightBoth": "粗细",
+          "weightRegular": "细体",
+          "weightBold": "粗体"
         },
         "upload": {
           "action": "上传字体",
@@ -160,7 +165,9 @@
         "nothingDelete": "这个家族还没有安装字体文件，无需删除",
         "armDelete": "再点一次确认删除",
         "armDeleteMany": "再点一次删除「{name}」的 {count} 个字体文件",
-        "armDownload": "再点一次开始下载 {count} 个字体家族"
+        "armDownload": "再点一次开始下载 {count} 个字体家族",
+        "armDeleteShared": "再点一次删除「{name}」的 {count} 个字体文件；{affected} 还在用，删掉后它们会缺字体。只想删其中某个字体的话，到下面「单个字体家族」里手动删掉 {shared}",
+        "armDeleteFamilyShared": "再点一次删除「{name}」的 {count} 个字体文件；{affected} 还在用，删掉后它们会缺字体"
       },
       "error": {
         "generic": "请求失败，请查看 AstrBot 日志",

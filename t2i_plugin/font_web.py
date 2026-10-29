@@ -1,4 +1,4 @@
-"""渲染字体页面的后端 Web API（AstrBot Plugin View 桥）。
+"""文转图服务面板的后端 Web API（AstrBot Plugin View 桥）。
 
 页面本身是 ``views/fonts/index.html``，通过 ``window.AstrBotPluginView`` 调用
 这里的接口。AstrBot 要求注册的路由带插件名前缀，而页面里的 endpoint 不带，
@@ -55,7 +55,8 @@ class FontWebApi:
         manager: FontManager,
         *,
         enabled: bool = True,
-        specimen: Callable[[list[str], str], Awaitable[tuple[bool, str]]] | None = None,
+        specimen: Callable[[list[str], str, str, str], Awaitable[tuple[bool, str]]]
+        | None = None,
     ) -> None:
         self.plugin_name = plugin_name
         self.manager = manager
@@ -71,7 +72,7 @@ class FontWebApi:
         if not WEB_API_AVAILABLE or not callable(register):
             logger.warning(
                 "[t2i] 当前 AstrBot 版本不支持插件页面 Web API，"
-                "渲染字体页面不可用（字体目录与配置项仍然有效）"
+                "文转图服务面板不可用（字体目录与配置项仍然有效）"
             )
             return []
         routes: list[tuple[str, Callable[[], Awaitable[object]], list[str], str]] = [
@@ -231,8 +232,12 @@ class FontWebApi:
             names = _installed_family_names(self.manager)
         raw_scale = payload.get("scale")
         scale = raw_scale if raw_scale in SPECIMEN_SCALES else "normal"
+        raw_text = payload.get("text")
+        text = raw_text.strip()[:SPECIMEN_TEXT_LIMIT] if isinstance(raw_text, str) else ""
+        raw_weights = payload.get("weights")
+        weights = raw_weights if raw_weights in SPECIMEN_WEIGHTS else "both"
         try:
-            ok, detail = await self.specimen(names, scale)
+            ok, detail = await self.specimen(names, scale, text, weights)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[t2i] 渲染字体预览失败：{exc}")
             return self._fail(f"渲染失败：{exc}", status_code=500)
@@ -242,12 +247,24 @@ class FontWebApi:
         if not data:
             return self._fail("渲染结果读取失败", status_code=500)
         return self._ok(
-            {"image": f"data:image/png;base64,{data}", "families": names, "scale": scale}
+            {
+                "image": f"data:image/png;base64,{data}",
+                "families": names,
+                "scale": scale,
+                "text": text,
+                "weights": weights,
+            }
         )
 
 
 # 预览图的像素比等级，与渲染器的 device_scale_factor_level 取值一致
 SPECIMEN_SCALES = ("normal", "high", "ultra")
+
+# 每个家族要画哪几种字重的行：两者都画 / 只画常规 / 只画粗体
+SPECIMEN_WEIGHTS = ("both", "regular", "bold")
+
+# 自定义预览文字的字符上限：预览图宽度有限，太长会挤成一片
+SPECIMEN_TEXT_LIMIT = 120
 
 
 def _installed_family_names(manager: FontManager) -> list[str]:

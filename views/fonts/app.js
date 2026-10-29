@@ -1,4 +1,4 @@
-// 渲染字体页：一个页面分栏切换——「概览」（统计 / 任务 / 上传 / 链接下载 / 预览）
+// 文转图服务面板：一个页面分栏切换——「概览」（统计 / 任务 / 上传 / 链接下载 / 预览）
 // 与对接栏位（对接项目的模板整套 + 单家族清单）。栏位按 DOM 里的 tab/panel 配对
 // 现读，加栏位只改 index.html；各栏共用同一次清单请求，切换只做显隐，栏位状态记在
 // 地址 hash 里（#upstream 可直接打开第二栏）。
@@ -27,6 +27,8 @@ const els = {
   installedCount: $("installed-count"),
   specimenPicker: $("specimen-picker"),
   specimenScale: $("specimen-scale"),
+  specimenText: $("specimen-text"),
+  specimenWeight: $("specimen-weight"),
   specimenCaption: $("specimen-caption"),
   specimenBox: $("specimen-box"),
   specimenImg: $("specimen-img"),
@@ -126,7 +128,7 @@ function applyI18n() {
       t(el.dataset.i18nAriaLabel, el.getAttribute("aria-label") || ""),
     );
   }
-  document.title = t("title", "渲染字体");
+  document.title = t("title", "文转图服务面板");
 }
 
 /** 语言变了要重写静态文案，动态区块（统计、清单）跟着重渲染一次。 */
@@ -592,23 +594,74 @@ function installedPathsFor(keys) {
     .map((item) => item.path);
 }
 
-/** 删除某个家族（或某个模板涉及的家族）已装的全部文件。 */
-async function removeFamilies(keys, label, button) {
+/** 这些家族里仍被别的「装齐」模板需要的那些：删掉会让对方缺字体，跳过不删。 */
+function familiesInUseElsewhere(keys, skipTemplateKey) {
+  const templates = (state.data.catalog.templates || []).filter(
+    (tpl) =>
+      tpl.key !== skipTemplateKey && tpl.installed && !(tpl.missing || []).length,
+  );
+  const used = new Map();
+  for (const key of keys) {
+    const owners = templates
+      .filter((tpl) => (tpl.families || []).includes(key))
+      .map((tpl) => tpl.name_en || tpl.name || tpl.key);
+    if (owners.length) used.set(key, owners);
+  }
+  return used;
+}
+
+/** 被牵连的其它模板名（去重），用在「删掉后它们会缺字体」的提示里。 */
+function describeOwners(inUse) {
+  const names = [];
+  for (const owners of inUse.values()) {
+    for (const owner of owners) {
+      if (!names.includes(owner)) names.push(owner);
+    }
+  }
+  return names.join(t("list.separator", "、"));
+}
+
+// 模块级删除和家族级删除的确认文案不同：后者已经在家族清单里，不需要再指路
+const SHARED_HINTS = {
+  "toast.armDeleteShared":
+    "再点一次删除「{name}」的 {count} 个字体文件；{affected} 还在用，删掉后它们会缺字体。只想删其中某个字体的话，到下面「单个字体家族」里手动删掉 {shared}",
+  "toast.armDeleteFamilyShared":
+    "再点一次删除「{name}」的 {count} 个字体文件；{affected} 还在用，删掉后它们会缺字体",
+};
+
+/**
+ * 删除某个家族（或某个模板涉及的家族）的已装文件。
+ * 共用只提醒不拦：点名要删就照删，确认提示里说明会让哪些模板缺字体；
+ * 模板级删除还会指路到下面的家族清单，免得为了一个字体删掉整套。
+ */
+async function removeFamilies(
+  keys,
+  label,
+  button,
+  inUse = new Map(),
+  sharedHintKey = "toast.armDeleteShared",
+) {
   const paths = installedPathsFor(keys);
   if (!paths.length) {
-    toast(
-      t("toast.nothingDelete", "这个家族还没有安装字体文件，无需删除"),
-      "warn",
-    );
+    toast(t("toast.nothingDelete", "这个家族还没有安装字体文件，无需删除"), "warn");
     return;
   }
+  const affected = describeOwners(inUse);
+  const shared = keys.filter((key) => inUse.has(key)).map(familyName).join(t("list.separator", "、"));
   const armed = armConfirm(
     button,
     `family:${keys.join(",")}`,
-    t("toast.armDeleteMany", "再点一次删除「{name}」的 {count} 个字体文件", {
-      name: label,
-      count: paths.length,
-    }),
+    affected
+      ? t(sharedHintKey, SHARED_HINTS[sharedHintKey] || "", {
+          name: label,
+          count: paths.length,
+          affected,
+          shared,
+        })
+      : t("toast.armDeleteMany", "再点一次删除「{name}」的 {count} 个字体文件", {
+          name: label,
+          count: paths.length,
+        }),
   );
   if (!armed) return;
   setBusy(true);
@@ -619,10 +672,7 @@ async function removeFamilies(keys, label, button) {
   }
   setBusy(false);
   if (removed) {
-    toast(
-      t("toast.deletedMany", "已删除 {count} 个字体文件", { count: removed }),
-      "ok",
-    );
+    toast(t("toast.deletedMany", "已删除 {count} 个字体文件", { count: removed }), "ok");
   }
   await load();
 }
@@ -648,22 +698,31 @@ function renderTemplates(templates) {
       : t("template.missing", "缺少：{list}", {
           list: missing.map(familyName).join(t("list.separator", "、")),
         });
-    // 缺的元素照样由后端按模板补齐，所以整套下载与补缺统一叫「下载」；
-    // 装齐了只留「删除」，与家族卡保持一致，不给重复占位的按钮
     const installedAll = tpl.installed && !missing.length;
+    // 删除只清「已装、且没被其它装齐的模板占用」的家族：部分装好的模板也可能有可删的部分，
+    // 所以缺字体的模板会同时出现「下载」（补缺）与「删除」（清掉自己独占的部分）
+    const removable = (tpl.families || []).filter((key) => {
+      const family = state.data.catalog.families.find((item) => item.key === key);
+      return Boolean(family && family.installed);
+    });
     const downloading =
       jobActive() &&
       (state.jobTemplate === tpl.key ||
         (tpl.families || []).some((key) => state.jobKeys.has(key)));
-    const action = downloading
-      ? ""
-      : installedAll
-        ? `<button class="danger" data-template-delete="${escapeHtml(tpl.key)}" ${
-            state.busy ? "disabled" : ""
-          }>${escapeHtml(t("template.actionRemove", "删除"))}</button>`
-        : `<button class="primary" data-template="${escapeHtml(tpl.key)}" ${
-            state.busy ? "disabled" : ""
-          }>${escapeHtml(t("template.download", "下载"))}</button>`;
+    const actions = [];
+    if (!downloading) {
+      if (!installedAll) {
+        actions.push(`<button class="primary" data-template="${escapeHtml(tpl.key)}" ${
+          state.busy ? "disabled" : ""
+        }>${escapeHtml(t("template.download", "下载"))}</button>`);
+      }
+      if (removable.length) {
+        actions.push(`<button class="danger" data-template-delete="${escapeHtml(tpl.key)}" ${
+          state.busy ? "disabled" : ""
+        }>${escapeHtml(t("template.actionRemove", "删除"))}</button>`);
+      }
+    }
+    const action = actions.join("");
     return `<div class="tile">
       <div class="head">
         <div class="name">${templateTitle(tpl)}</div>
@@ -697,6 +756,7 @@ function renderFamilies(families, status) {
   els.families.innerHTML = list
     .map((family) => {
       const downloading = jobActive() && state.jobKeys.has(family.key);
+      // 单个家族是用户直接点名删的，共用只提醒不拦（模板批量删才跳过共用的部分）
       const action = downloading
         ? ""
         : family.installed
@@ -977,10 +1037,12 @@ function bindGrids() {
       const tpl = state.data.catalog.templates.find(
         (item) => item.key === templateDelete,
       );
+      const families = tpl ? tpl.families : [];
       await removeFamilies(
-        tpl ? tpl.families : [],
+        families,
         tpl ? tpl.name_en || tpl.name : templateDelete,
         button,
+        familiesInUseElsewhere(families, tpl ? tpl.key : ""),
       );
       return;
     }
@@ -1001,7 +1063,13 @@ function bindGrids() {
     if (!button) return;
     if (button.dataset.familyDelete) {
       const key = button.dataset.familyDelete;
-      await removeFamilies([key], familyName(key), button);
+      await removeFamilies(
+        [key],
+        familyName(key),
+        button,
+        familiesInUseElsewhere([key], ""),
+        "toast.armDeleteFamilyShared",
+      );
       return;
     }
     if (!button.dataset.family) return;
@@ -1055,6 +1123,12 @@ function bindActions() {
     // 清晰度由渲染器的像素比等级决定：越高越清晰、图片也越大
     const scale = els.specimenScale ? els.specimenScale.value : "";
     if (scale) payload.scale = scale;
+    // 留空就用后端默认样句，方便只对比自己关心的字
+    const text = els.specimenText ? els.specimenText.value.trim() : "";
+    if (text) payload.text = text;
+    // 粗细：两行同字号，只画常规或只画粗体时可以并排比差异
+    const weights = els.specimenWeight ? els.specimenWeight.value : "";
+    if (weights) payload.weights = weights;
     const data = await apiPost("fonts/specimen", payload);
     els.btnSpecimen.disabled = false;
     els.btnSpecimen.textContent = t("manage.specimen.action", "渲染预览图");

@@ -112,7 +112,7 @@ class EndpointConfig:
 
 @dataclass
 class FontsConfig:
-    """字体供给配置（字体文件本身的下载/上传走插件页面的「渲染字体」）。"""
+    """字体供给配置（字体文件本身的下载/上传走插件页面的「文转图服务面板」）。"""
 
     enabled: bool = True
     github_proxy: str = ""

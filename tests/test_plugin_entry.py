@@ -74,7 +74,7 @@ async def test_config_is_parsed_into_components(plugin):
 
 
 async def test_only_font_web_apis_are_registered(plugin):
-    # 插件当前只给「渲染字体」页面注册 Web API；渲染与存储都走 /text2img 契约，
+    # 插件当前只给「文转图服务面板」注册 Web API；渲染与存储都走 /text2img 契约，
     # 不该在插件层另开入口。
     port = free_port()
     instance = plugin(

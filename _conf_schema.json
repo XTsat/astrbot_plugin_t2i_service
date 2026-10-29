@@ -199,9 +199,9 @@
     }
   },
   "fonts": {
-    "description": "渲染字体",
+    "description": "文转图服务面板",
     "type": "object",
-    "hint": "字体文件本身的安装在这里只做开关与来源设置：下载预置字体、按链接下载、上传自己的字体，都在插件页面（WebUI 插件详情 → 「渲染字体」）里操作。字体放在 plugins 数据目录的 astrbot_plugin_t2i_service/fonts/ 下，渲染时由 Chromium 自动读取，不需要改模板。",
+    "hint": "字体文件本身的安装在这里只做开关与来源设置：下载预置字体、按链接下载、上传自己的字体，都在插件页面（WebUI 插件详情 → 「文转图服务面板」）里操作。字体放在 plugins 数据目录的 astrbot_plugin_t2i_service/fonts/ 下，渲染时由 Chromium 自动读取，不需要改模板。",
     "items": {
       "enabled": {
         "description": "启用字体供给",
