@@ -197,5 +197,36 @@
         "default": 60
       }
     }
+  },
+  "fonts": {
+    "description": "文转图服务面板",
+    "type": "object",
+    "hint": "字体文件本身的安装在这里只做开关与来源设置：下载预置字体、按链接下载、上传自己的字体，都在插件页面（WebUI 插件详情 → 「文转图服务面板」）里操作。字体放在 plugins 数据目录的 astrbot_plugin_t2i_service/fonts/ 下，渲染时由 Chromium 自动读取，不需要改模板。",
+    "items": {
+      "enabled": {
+        "description": "启用字体供给",
+        "type": "bool",
+        "hint": "关闭后不再生成字体配置、也不加载 fonts/ 目录里的字体，字体页面的下载与上传接口一并停用。",
+        "default": true
+      },
+      "github_proxy": {
+        "description": "GitHub 下载加速前缀",
+        "type": "string",
+        "hint": "预置字体来自 GitHub 仓库，国内直连 raw.githubusercontent.com 只有几百字节每秒，大字体根本下不完。留空时已自动尝试内置的 jsDelivr 镜像与两个加速前缀；只有它们都不通时，才需要在这里填自己的加速前缀（形如 https://你的前缀/，会拼在完整 GitHub 地址前）。",
+        "default": ""
+      },
+      "upload_limit_mb": {
+        "description": "单个字体文件上限（MB）",
+        "type": "int",
+        "hint": "上传与按链接下载时的单文件大小上限。中文字体常见 10–30 MB，默认 128 MB 足够。",
+        "default": 128
+      },
+      "restart_browser_on_change": {
+        "description": "字体变动后重启浏览器",
+        "type": "bool",
+        "hint": "Chromium 只在启动时读取字体环境，所以新增或删除字体后需要重启渲染进程才会生效。关掉后只能等它因空闲被回收。",
+        "default": true
+      }
+    }
   }
 }

@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>文转图服务面板</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div id="boot" class="boot">
+      <span class="spinner"></span>
+      <span data-i18n="boot">正在连接插件…</span>
+    </div>
+
+    <main id="app" hidden>
+      <header class="top">
+        <div class="titles">
+          <h1 data-i18n="title">文转图服务面板</h1>
+          <p class="muted" data-i18n-html="subtitle">
+            为文转图渲染提供字体，不会改动上游渲染逻辑。字体放在插件数据目录的
+            <code>fonts/</code> 下，渲染进程启动时自动生效。
+          </p>
+        </div>
+        <div class="actions">
+          <div class="chips" id="chips"></div>
+          <button
+            id="btn-refresh"
+            class="ghost"
+            data-i18n-title="action.refreshHint"
+            title="重写字体配置并让渲染重新加载"
+          >
+            <span data-i18n="action.refresh">重新加载字体</span>
+          </button>
+        </div>
+      </header>
+
+      <div id="load-error" class="alert danger" hidden>
+        <span class="alert-text" id="load-error-text"></span>
+        <button class="ghost" id="btn-retry" data-i18n="action.retry">重试</button>
+      </div>
+      <div id="warn-disabled" class="alert warn" hidden>
+        <span class="alert-text" data-i18n-html="warn.disabled">
+          字体功能已在插件配置里关闭（<code>fonts.enabled</code>），下载与上传接口不会生效。
+        </span>
+      </div>
+      <div id="warn-api" class="alert danger" hidden>
+        <span class="alert-text" data-i18n-html="warn.api">
+          当前 AstrBot 版本不支持插件页面接口（需要 4.24.1 及以上）。字体目录与配置项仍然可用，
+          但本页面无法下载或上传字体。
+        </span>
+      </div>
+
+      <!-- 加栏位：这里加一个 button[role=tab][aria-controls]，下面加一份 [role=tabpanel]，
+           栏位名取 id 去掉 tab- 前缀（上面的 hash 与 data-goto 都按这个名字写），app.js 自动接管 -->
+      <div
+        class="tabs"
+        id="page-tabs"
+        role="tablist"
+        data-i18n-aria-label="tabs.aria"
+        aria-label="字体页面"
+      >
+        <button
+          class="tab"
+          id="tab-overview"
+          role="tab"
+          aria-controls="panel-overview"
+          aria-selected="true"
+          tabindex="0"
+        >
+          <svg
+            class="tab-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" />
+          </svg>
+          <span data-i18n="tab.overview">概览</span>
+        </button>
+        <button
+          class="tab"
+          id="tab-upstream"
+          role="tab"
+          aria-controls="panel-upstream"
+          aria-selected="false"
+          tabindex="-1"
+        >
+          <svg
+            class="tab-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3 7l9-4 9 4-9 4-9-4z" />
+            <path d="M3 12l9 4 9-4M3 17l9 4 9-4" />
+          </svg>
+          <span data-i18n="tab.upstreamPlain">对接项目</span>
+        </button>
+      </div>
+
+      <div class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+        <section class="stats" id="stats"></section>
+
+        <section class="card job-card" hidden>
+          <div class="job-head">
+            <span class="job-label" data-i18n="job.label">字体任务</span>
+            <span class="job-status"></span>
+          </div>
+          <div class="bar"><div class="fill"></div></div>
+          <div class="job-msg muted"></div>
+          <pre class="job-log"></pre>
+        </section>
+
+        <section class="card">
+          <h2 data-i18n="manage.add.title">添加字体</h2>
+          <p class="muted small" data-i18n-html="manage.add.hint">
+            支持 <code>.ttf</code> / <code>.otf</code> / <code>.ttc</code> 文件，会校验是不是有效的字体；也可以直接贴直链下载，
+            文件名留空时从链接末段推断。大文件建议用 GitHub 加速地址（例如 <code>https://gh-proxy.com/</code> 前缀）。
+          </p>
+          <form id="url-form" class="input-group">
+            <input
+              type="url"
+              id="url-input"
+              placeholder="https://example.com/fonts/MyFont-Regular.ttf"
+              required
+            />
+            <input
+              type="text"
+              id="name-input"
+              data-i18n-placeholder="manage.url.namePlaceholder"
+              placeholder="保存文件名（可留空）"
+            />
+            <button type="submit" class="primary" data-i18n="manage.url.action">下载</button>
+            <button type="button" class="ghost" id="btn-upload" data-i18n="manage.upload.action">
+              上传字体
+            </button>
+          </form>
+          <input type="file" id="file-input" accept=".ttf,.otf,.ttc" hidden />
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2 data-i18n="manage.installed.title">已安装字体</h2>
+            <span class="muted small" id="installed-count"></span>
+          </div>
+          <div id="installed" class="installed"></div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2 data-i18n="manage.specimen.title">字体预览自检</h2>
+            <div class="head-tools">
+              <select id="specimen-scale" data-i18n-aria-label="manage.specimen.scaleAria">
+                <option value="normal" data-i18n="manage.specimen.scaleNormal">标准</option>
+                <option value="high" data-i18n="manage.specimen.scaleHigh">高清</option>
+                <option value="ultra" data-i18n="manage.specimen.scaleUltra">超清</option>
+              </select>
+              <select id="specimen-weight" data-i18n-aria-label="manage.specimen.weightAria">
+                <option value="both" data-i18n="manage.specimen.weightBoth">粗细</option>
+                <option value="regular" data-i18n="manage.specimen.weightRegular">细体</option>
+                <option value="bold" data-i18n="manage.specimen.weightBold">粗体</option>
+              </select>
+              <button class="ghost" id="btn-specimen" data-i18n="manage.specimen.action">
+                渲染预览图
+              </button>
+            </div>
+          </div>
+          <p class="muted small" data-i18n="manage.specimen.hint">
+            用插件自己的渲染服务把选中的家族各画一行；不点选就是对比全部已装字体。若某一行与其它行字形完全相同，说明该字体没有真正生效。
+          </p>
+          <input
+            id="specimen-text"
+            type="text"
+            maxlength="120"
+            autocomplete="off"
+            data-i18n-placeholder="manage.specimen.textPlaceholder"
+          />
+          <div
+            class="fam-picker"
+            id="specimen-picker"
+            role="group"
+            data-i18n-aria-label="manage.specimen.pickerAria"
+          ></div>
+          <p class="muted small" id="specimen-caption" hidden></p>
+          <div id="specimen-box" hidden>
+            <img id="specimen-img" alt="字体预览" data-i18n-alt="manage.specimen.alt" />
+          </div>
+        </section>
+      </div>
+
+      <div class="panel" id="panel-upstream" role="tabpanel" aria-labelledby="tab-upstream" hidden>
+        <div
+          class="subtabs"
+          id="upstream-tabs"
+          role="tablist"
+          data-i18n-aria-label="upstream.tabs.aria"
+          aria-label="上游项目"
+        ></div>
+
+        <div id="panel-project" class="stack" role="tabpanel" hidden>
+        <section class="card">
+          <p class="muted" data-i18n-html="upstream.project.desc">
+            这些字体是按
+            <a data-upstream-link href="#" target="_blank" rel="noreferrer">
+              astrbot_plugin_qq_group_daily_analysis（群聊日常分析）
+            </a>
+            的排版需求整理的：该插件把群聊分析渲染成图片时会按模板指定字体家族与字重。
+            下面每个模板都可以一次装齐它需要的整套字体。
+          </p>
+          <p class="muted small">
+            <span data-i18n-html="upstream.project.hintBefore">
+              其它文转图模板也可以直接用这里装好的字体——只要模板里写的
+              <code>font-family</code> 与字体文件内部的家族名一致即可。想装自己的字体，去
+            </span>
+            <button class="link" data-goto="overview" data-i18n="tab.overview">概览</button>
+            <span data-i18n="upstream.project.hintAfter">那一栏上传或贴链接。</span>
+          </p>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2 data-i18n="upstream.templates.title">一键下载模板字体</h2>
+            <button class="primary" id="btn-all" data-i18n="upstream.all">
+              下载全部模板字体
+            </button>
+          </div>
+          <div class="grid" id="templates"></div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
+            <h2 data-i18n="upstream.families.title">单个字体家族</h2>
+            <label class="check small">
+              <input type="checkbox" id="only-missing" />
+              <span data-i18n="upstream.families.onlyMissing">只看未安装</span>
+            </label>
+          </div>
+          <div class="grid" id="families"></div>
+          <p class="muted small" data-i18n-html="upstream.families.hint">
+            清单来自对接项目的 <code>T2I_FONTS.md</code>；装好的家族按钮会变成「删除」。
+          </p>
+        </section>
+        </div>
+      </div>
+
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

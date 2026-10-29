@@ -251,3 +251,94 @@ def build_status_card(payload: dict) -> str:
   </div>
 </div>"""
     return _document("文转图服务状态", body)
+
+
+_FONT_SPECIMEN_STYLE = """
+  .fam { padding: 14px 0; border-bottom: 1px dashed rgba(150, 180, 230, 0.16); }
+  .fam:last-child { border-bottom: none; }
+  .fam .label {
+    color: #9fb2d4; font-size: 12px; margin-bottom: 6px;
+    font-family: "SFMono-Regular", Consolas, monospace;
+  }
+  .fam .sample { font-size: 24px; line-height: 1.5; color: #eaf1ff; word-break: break-word; }
+  .empty { color: #9fb2d4; font-size: 13.5px; padding: 10px 0 4px; }
+  .hint {
+    margin-top: 16px; padding: 10px 12px; border-radius: 10px; font-size: 12px;
+    background: rgba(255, 200, 87, 0.10); color: #ffd98a;
+    border: 1px solid rgba(255, 200, 87, 0.22);
+  }
+"""
+
+_SAMPLE_TEXT = "文转图字体预览 Aa Bb Cc 0123 ！“”"
+
+# 预览卡按这个视口宽度渲染：比默认 800 窄，页面里按原尺寸显示不会被放大
+FONT_SPECIMEN_WIDTH = 720
+
+
+def _css_family(name: str) -> str:
+    """把家族名放进单引号 CSS 字符串：引号与反斜杠会破坏样式，先剔掉。"""
+    return name.replace("'", "").replace("\\", "").replace('"', "")
+
+
+def build_font_specimen(
+    families: list[str],
+    text: str | None = None,
+    weights: str = "both",
+) -> str:
+    """构造字体预览卡片：逐个家族渲染同一段文字，用来确认字体真的生效。
+
+    ``text`` 非空时用它替换默认样句，方便专门对比某几个字；``weights`` 决定每个家族
+    画几行——``both`` 常规与粗体各一行，``regular`` 只画常规，``bold`` 只画粗体。两行
+    用同一个字号，粗细差异才看得清。只列出字体文件里读到的家族名（``font-family``
+    认的名字），文件名对不上时这里会直接暴露出来。
+    """
+    sample = (text or "").strip() or _SAMPLE_TEXT
+    show_regular = weights != "bold"
+    show_bold = weights != "regular"
+    blocks: list[str] = []
+    for name in families:
+        # 家族名来自字体文件本身，仍按 HTML 转义后再放进样式/FONT 标签
+        safe = _esc(name)
+        css = _esc(_css_family(name))
+        lines = ""
+        if show_regular:
+            lines += f'<div class="sample" style="font-family: \'{css}\'">{_esc(sample)}</div>'
+        if show_bold:
+            lines += (
+                f'<div class="sample" style="font-family: \'{css}\'; font-weight: 700">'
+                f"{_esc(sample)} （粗体）</div>"
+            )
+        blocks.append(
+            '<div class="fam">'
+            f'<div class="label">{safe}</div>'
+            f"{lines}"
+            "</div>"
+        )
+    if not blocks:
+        body_inner = (
+            '<div class="empty">还没有安装任何字体。请先在插件页「文转图服务面板」的「概览」'
+            "下载或上传字体。</div>"
+        )
+    else:
+        body_inner = "".join(blocks)
+    body = f"""
+<div class="card">
+  <div class="head">
+    <span class="dot {"ok" if blocks else "warn"}"></span>
+    <h1>字体预览</h1>
+  </div>
+  <div class="sub">
+    同一句话按每个家族各渲染一次 · 共 {len(blocks)} 个家族 · {_esc(_now())}
+  </div>
+  {body_inner}
+  <div class="hint">
+    若某一行看起来和其它行完全相同，说明该字体没有真正生效：
+    检查字体文件是否有效、Chromium 是否已经重启（字体变更后插件会自动重启）。
+  </div>
+  <div class="foot">
+    <span>生成自 AstrBot 插件内嵌渲染服务</span>
+    <span class="mono">t2i_service · fonts</span>
+  </div>
+</div>
+<style>{_FONT_SPECIMEN_STYLE}</style>"""
+    return _document("字体预览", body)

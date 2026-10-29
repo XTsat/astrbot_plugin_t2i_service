@@ -3,5 +3,176 @@
     "display_name": "AstrBot 文转图服务",
     "desc": "在 AstrBot 进程内提供 HTML/模板转图片渲染，可直接作为 AstrBot 的文转图端点，无需单独部署容器。基于官方文转图服务制作，接口与行为保持一致。",
     "short_desc": "AstrBot 内置文转图渲染服务"
+  },
+  "views": {
+    "fonts": {
+      "title": "文转图服务面板"
+    }
+  },
+  "pages": {
+    "fonts": {
+      "title": "文转图服务面板",
+      "boot": "正在连接插件…",
+      "subtitle": "为文转图渲染提供字体，不会改动上游渲染逻辑。字体放在插件数据目录的 <code>fonts/</code> 下，渲染进程启动时自动生效。",
+      "action": {
+        "refresh": "重新加载字体",
+        "refreshHint": "重写字体配置并让渲染重新加载",
+        "refreshing": "刷新中…",
+        "retry": "重试"
+      },
+      "warn": {
+        "disabled": "字体功能已在插件配置里关闭（<code>fonts.enabled</code>），下载与上传接口不会生效。",
+        "api": "当前 AstrBot 版本不支持插件页面接口（需要 4.24.1 及以上）。字体目录与配置项仍然可用，但本页面无法下载或上传字体。"
+      },
+      "chip": {
+        "state": {
+          "on": "字体已生效",
+          "pending": "字体未生效，下次渲染自动生效",
+          "off": "字体功能已关闭"
+        },
+        "configHint": "{path} · FONTCONFIG_FILE={env}",
+        "configUnset": "（未设置）",
+        "job": "任务 {done}/{total}"
+      },
+      "tabs": {
+        "aria": "字体页面"
+      },
+      "tab": {
+        "overview": "概览",
+        "upstreamPlain": "对接项目"
+      },
+      "stat": {
+        "files": "字体文件",
+        "fccache": "fc-cache",
+        "limit": "单个文件上限",
+        "dir": "字体目录"
+      },
+      "value": {
+        "files": "{count} 个 · {size}",
+        "active": "已接管",
+        "pending": "待生效",
+        "none": "未生成",
+        "available": "可用",
+        "unavailable": "不可用"
+      },
+      "manage": {
+        "installed": {
+          "title": "已安装字体",
+          "count": "{count} 个文件 · {size}",
+          "empty": "字体目录还是空的，先上传或按链接下载一个字体吧。",
+          "delete": "删除",
+          "fileCount": "{count} 个文件",
+          "sizeTotal": "共 {size}",
+          "aliases": "另有名称 {list}",
+          "unknownFamily": "未识别家族",
+          "aliasesMore": "另有名称 {list} 等 {count} 个"
+        },
+        "specimen": {
+          "title": "字体预览自检",
+          "hint": "用插件自己的渲染服务把选中的家族各画一行；不点选就是对比全部已装字体。上面的输入框可以填想专门对比的字词。若某一行与其它行字形完全相同，说明该字体没有真正生效。",
+          "action": "渲染预览图",
+          "busy": "渲染中…",
+          "alt": "字体预览",
+          "pickerAria": "选择要对比的字体家族",
+          "caption": "本次对比 {count} 个家族：{list}",
+          "scaleAria": "预览图清晰度",
+          "scaleNormal": "标准",
+          "scaleHigh": "高清",
+          "scaleUltra": "超清",
+          "textPlaceholder": "自定义对比文字（留空用默认样句）",
+          "weightAria": "字重",
+          "weightBoth": "粗细",
+          "weightRegular": "细体",
+          "weightBold": "粗体"
+        },
+        "upload": {
+          "action": "上传字体",
+          "busy": "上传中…"
+        },
+        "url": {
+          "namePlaceholder": "保存文件名（可留空）",
+          "action": "下载"
+        },
+        "add": {
+          "title": "添加字体",
+          "hint": "支持 <code>.ttf</code> / <code>.otf</code> / <code>.ttc</code> 文件，会校验是不是有效的字体；也可以直接贴直链下载，文件名留空时从链接末段推断。大文件建议用 GitHub 加速地址（例如 <code>https://gh-proxy.com/</code> 前缀）。"
+        }
+      },
+      "upstream": {
+        "linkFallback": "对接项目",
+        "project": {
+          "desc": "这些字体是按 <a data-upstream-link href=\"#\" target=\"_blank\" rel=\"noreferrer\">astrbot_plugin_qq_group_daily_analysis（群聊日常分析）</a> 的排版需求整理的：该插件把群聊分析渲染成图片时会按模板指定字体家族与字重。下面每个模板都可以一次装齐它需要的整套字体。",
+          "hintBefore": "其它文转图模板也可以直接用这里装好的字体——只要模板里写的 <code>font-family</code> 与字体文件内部的家族名一致即可。想装自己的字体，去",
+          "hintAfter": "那一栏上传或贴链接。"
+        },
+        "tabs": {
+          "aria": "上游项目"
+        },
+        "templates": {
+          "title": "一键下载模板字体"
+        },
+        "all": "下载全部模板字体",
+        "families": {
+          "title": "单个字体家族",
+          "onlyMissing": "只看未安装",
+          "hint": "清单来自对接项目的 <code>T2I_FONTS.md</code>；装好的家族按钮会变成「删除」。"
+        }
+      },
+      "template": {
+        "installedAll": "全部 {count} 个家族已安装：{list}",
+        "missing": "缺少：{list}",
+        "approx": "约 {mb} MB · {note}",
+        "actionRemove": "删除",
+        "download": "下载"
+      },
+      "family": {
+        "meta": "字重 {weights} · 约 {mb} MB",
+        "actionDownload": "下载",
+        "actionRemove": "删除"
+      },
+      "families": {
+        "empty": "没有未安装的字体家族。"
+      },
+      "list": {
+        "separator": "、"
+      },
+      "job": {
+        "label": "字体任务",
+        "status": "{state} · {done}/{total} · {elapsed}s",
+        "state": {
+          "running": "进行中",
+          "done": "已完成",
+          "failed": "失败",
+          "error": "失败"
+        },
+        "preparing": "准备中"
+      },
+      "toast": {
+        "busy": "已有任务在进行中，请等待完成",
+        "started": "任务已开始",
+        "deleted": "已删除",
+        "urlStarted": "已开始按链接下载",
+        "uploadUnsupported": "当前 AstrBot 版本不支持页面上传，请用链接下载",
+        "uploaded": "已上传：{names}",
+        "uploadNoFamily": "已上传，但没读到字体家族名，请检查文件是否有效",
+        "templateStarted": "已开始下载模板字体",
+        "keysStarted": "已开始下载列表里的字体",
+        "familyStarted": "已开始下载该字体",
+        "refreshed": "字体配置已重写，渲染进程会按需重启",
+        "allInstalled": "所有字体家族都已安装",
+        "allStarted": "已开始下载全部字体",
+        "deletedMany": "已删除 {count} 个字体文件",
+        "nothingDelete": "这个家族还没有安装字体文件，无需删除",
+        "armDelete": "再点一次确认删除",
+        "armDeleteMany": "再点一次删除「{name}」的 {count} 个字体文件",
+        "armDownload": "再点一次开始下载 {count} 个字体家族",
+        "armDeleteShared": "再点一次删除「{name}」的 {count} 个字体文件；{affected} 还在用，删掉后它们会缺字体。只想删其中某个字体的话，到下面「单个字体家族」里手动删掉 {shared}",
+        "armDeleteFamilyShared": "再点一次删除「{name}」的 {count} 个字体文件；{affected} 还在用，删掉后它们会缺字体"
+      },
+      "error": {
+        "generic": "请求失败，请查看 AstrBot 日志",
+        "noBridge": "没有检测到 AstrBot 插件页面桥，请从 WebUI 的插件页面打开本页。"
+      }
+    }
   }
 }

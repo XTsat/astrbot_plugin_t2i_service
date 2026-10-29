@@ -509,15 +509,26 @@ class T2IHttpServer:
 
     # ------------------------------------------------------------- 测试渲染
 
-    async def render_probe(self, html: str) -> tuple[bool, str]:
-        """同步渲染一段 HTML，用于 /t2i_test 与状态页自检。"""
+    async def render_probe(
+        self, html: str, width: int | None = None, scale: str = "normal"
+    ) -> tuple[bool, str]:
+        """同步渲染一段 HTML，用于 /t2i_test 与状态页自检。
+
+        ``width`` 覆盖视口宽度（不传走渲染器默认值），``scale`` 选像素比等级
+        （normal / high / ultra），用于让页面按需换取更清晰的预览图。
+        """
         try:
             _, abs_path = await self.renderer.from_html(html)
             picture = await self.renderer.html2pic(
                 abs_path,
-                ScreenshotOptions(type="png", full_page=True),
+                ScreenshotOptions(
+                    type="png",
+                    full_page=True,
+                    viewport_width=width,
+                    device_scale_factor_level=scale,
+                ),
             )
-            RENDER_REQUESTS.labels(result="success", format="png", scale="normal").inc()
+            RENDER_REQUESTS.labels(result="success", format="png", scale=scale).inc()
             return True, picture
         except PlaywrightNotInstalledError as exc:
             return False, str(exc)

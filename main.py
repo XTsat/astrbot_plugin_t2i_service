@@ -12,6 +12,7 @@ AstrBot 插件进程，用 aiohttp 暴露**完全一致**的 HTTP 契约，因�
     /t2i_status   查看服务/浏览器/端点状态
     /t2i_install  安装 Chromium；已装但缺系统库时改为补装系统依赖
     /t2i_test     渲染一张测试卡片，验证链路是否打通
+    /t2i_fonts    查看字体目录并渲染字体预览图
     /t2i_restart  重启内嵌 HTTP 服务并释放 Chromium"""
 
 from __future__ import annotations
@@ -64,8 +65,14 @@ from t2i_plugin.browser import (  # noqa: E402
     deps_install_available,
     playwright_pip_available,
 )
-from t2i_plugin.card import build_test_card  # noqa: E402
+from t2i_plugin.card import (  # noqa: E402
+    FONT_SPECIMEN_WIDTH,
+    build_font_specimen,
+    build_test_card,
+)
 from t2i_plugin.config import DEFAULT_FALLBACK_ENDPOINT, T2IConfig  # noqa: E402
+from t2i_plugin.font_web import FontWebApi  # noqa: E402
+from t2i_plugin.fonts import FontManager  # noqa: E402
 from t2i_plugin.server import T2IHttpServer  # noqa: E402
 
 # 历史上会写进用户配置的备用端点，官方已停用；值为空时视为「未自定义」
@@ -93,6 +100,7 @@ class T2IServicePlugin(Star):
       /t2i_status   查看服务 / 浏览器 / 端点状态
       /t2i_install  安装 Chromium；已装但缺系统库时改为补装系统依赖
       /t2i_test     渲染一张测试卡片，验证链路是否打通
+      /t2i_fonts    查看字体目录并渲染字体预览图
       /t2i_restart  重启内嵌 HTTP 服务并释放 Chromium
 
     注：AstrBot v3.5.19 之后插件类会被自动识别，无需 @register 装饰器；
@@ -140,6 +148,24 @@ class T2IServicePlugin(Star):
         self._cleanup_task: asyncio.Task | None = None
         self.loaded_at = time.time()
 
+        # 字体供给：只往 fonts/ 目录里放文件并生成 fontconfig，不介入渲染逻辑。
+        # 下载/上传通过插件页面（views/fonts）的接口完成，配置项只放开关与来源。
+        self.fonts = FontManager(
+            self.data_dir / "fonts",
+            github_proxy=self.settings.fonts.github_proxy,
+            upload_limit_mb=self.settings.fonts.upload_limit_mb,
+            on_changed=self._on_fonts_changed,
+        )
+        self.font_web = FontWebApi(
+            PLUGIN_NAME,
+            self.fonts,
+            enabled=self.settings.fonts.enabled,
+            specimen=self._render_font_specimen,
+        )
+        # 在 __init__ 里注册：AstrBot 收集的是插件实例注册过的路由，
+        # 视图页面在插件卡片打开时才会被发现，两者都早于 initialize() 的执行时机。
+        self.font_web.register(context)
+
     # ------------------------------------------------------------ 生命周期
 
     async def initialize(self) -> None:
@@ -158,6 +184,8 @@ class T2IServicePlugin(Star):
                 self.browser_manager.cleanup_orphans()
             except Exception as exc:  # pragma: no cover - 防御
                 logger.warning(f"[t2i] 清理残留 Chromium 失败：{exc}")
+
+        self._apply_fonts_config()
 
         self._schedule_deps_install()
 
@@ -184,6 +212,7 @@ class T2IServicePlugin(Star):
             self._cleanup_task.cancel()
             self._cleanup_task = None
         self.browser_manager.cancel_install()
+        self.fonts.cancel()
         try:
             await self.server.stop()
         except Exception as exc:  # pragma: no cover - 防御
@@ -425,6 +454,60 @@ class T2IServicePlugin(Star):
             except Exception as exc:  # pragma: no cover - 防御
                 logger.debug(f"[t2i] 释放闲置 Chromium 失败：{exc}")
 
+    # ------------------------------------------------------------ 字体供给
+
+    def _apply_fonts_config(self) -> None:
+        """接管字体配置。Chromium 只在启动时读取字体环境，所以必须早于渲染。"""
+        if not self.settings.fonts.enabled:
+            logger.info("[t2i] 字体供给未启用（fonts.enabled = false）")
+            return
+        try:
+            if self.fonts.apply_env():
+                logger.info(f"[t2i] 字体目录已接管：{self.fonts.fonts_dir}")
+            else:
+                logger.warning("[t2i] 字体配置生成失败，渲染将只使用系统字体")
+        except OSError as exc:
+            logger.warning(f"[t2i] 初始化字体目录失败：{exc}")
+
+    async def _on_fonts_changed(self) -> None:
+        """字体增删后的收尾：刷新配置，必要时重启 Chromium 重新枚举字体。"""
+        if self._closing:
+            return
+        if self.settings.fonts.enabled:
+            self.fonts.apply_env()
+        if not self.settings.fonts.restart_browser_on_change:
+            logger.info("[t2i] 字体已更新；未开启自动重启，下次启动渲染时生效")
+            return
+        try:
+            await self.renderer.terminate()
+            logger.info("[t2i] 字体已更新，渲染进程已重启以加载新字体")
+        except Exception as exc:  # noqa: BLE001 - 重启失败不该打断下载流程
+            logger.warning(f"[t2i] 重启渲染进程失败：{exc}")
+
+    async def _render_font_specimen(
+        self,
+        families: list[str],
+        scale: str = "normal",
+        text: str = "",
+        weights: str = "both",
+    ) -> tuple[bool, str]:
+        """渲染字体预览卡片，返回（是否成功, 图片路径或错误信息）。"""
+        return await self.server.render_probe(
+            build_font_specimen(families, text, weights),
+            width=FONT_SPECIMEN_WIDTH,
+            scale=scale,
+        )
+
+    def _installed_family_names(self) -> list[str]:
+        """已安装字体在文件里自称的家族名，页面预览与命令预览都用它。"""
+        names: list[str] = []
+        for item in self.fonts.list_installed():
+            for name in item.get("families", []):
+                text = str(name)
+                if text and text not in names:
+                    names.append(text)
+        return names
+
     # -------------------------------------------------------------- 状态信息
 
     def _status_payload(self) -> dict:
@@ -454,6 +537,14 @@ class T2IServicePlugin(Star):
                 "astrbot_t2i_strategy": self._read_core_config("t2i_strategy"),
                 "astrbot_t2i_enabled": self._read_core_flag("t2i"),
             },
+            "fonts": {
+                "enabled": self.settings.fonts.enabled,
+                "dir": str(self.fonts.fonts_dir),
+                "families": self.fonts.status()["families"],
+                "files": self.fonts.status()["files"],
+                "total_text": self.fonts.status()["total_text"],
+                "env_active": self.fonts.env_active(),
+            },
         }
 
     def _read_core_config(self, key: str) -> str:
@@ -474,6 +565,7 @@ class T2IServicePlugin(Star):
         browser = payload["browser"]
         renderer = payload["renderer"]
         endpoint = payload["endpoint"]
+        fonts = payload["fonts"]
 
         if browser["installed"]:
             chromium = f"已安装（{Path(browser['chromium_path']).name}）"
@@ -497,6 +589,8 @@ class T2IServicePlugin(Star):
             f"浏览器连接：{'已连接' if renderer['connected'] else '空闲/未启动'}",
             f"插件浏览器目录：{browser['browsers_path']}",
             f"安装任务：{browser['install']['status']} - {browser['install']['message']}",
+            f"渲染字体：{fonts['families']} 个家族 / {fonts['files']} 个文件"
+            f"（{fonts['total_text']}，{'已接管' if fonts['env_active'] else '未生效'}）",
             f"AstrBot 文转图端点：{endpoint['astrbot_t2i_endpoint'] or '（未设置）'}"
             f"（策略：{endpoint['astrbot_t2i_strategy'] or '未知'}，"
             f"输出开关：{'开' if endpoint['astrbot_t2i_enabled'] else '关'}）",
@@ -683,6 +777,34 @@ class T2IServicePlugin(Star):
             yield event.plain_result(f"渲染成功，用时 {elapsed * 1000:.0f} ms")
         else:
             yield event.plain_result(f"渲染失败：{detail}{self._install_hint()}")
+
+    @filter.command("t2i_fonts")
+    async def cmd_fonts(
+        self, event: AstrMessageEvent
+    ) -> AsyncIterator[MessageEventResult]:
+        """查看字体目录，并渲染一张字体预览图。"""
+        status = self.fonts.status()
+        enabled = self.settings.fonts.enabled
+        lines = [
+            "【渲染字体】",
+            f"状态：{'已启用' if enabled else '已关闭（fonts.enabled = false）'}",
+            f"目录：{status['dir']}",
+            f"已装：{status['families']} 个家族 · {status['files']} 个文件 · "
+            f"{status['total_text']}",
+            f"fontconfig：{'已接管' if status['env_active'] else '未生效'}"
+            f"；fc-cache：{'可用' if status['fc_cache'] else '不可用'}",
+            "下载预置字体、按链接下载、上传字体：WebUI 插件详情页的「文转图服务面板」页面",
+        ]
+        yield event.plain_result("\n".join(lines))
+
+        names = self._installed_family_names()
+        if not enabled or not names:
+            return
+        ok, detail = await self._render_font_specimen(names[:16])
+        if ok:
+            yield event.image_result(detail)
+        else:
+            yield event.plain_result(f"❌ 字体预览渲染失败：{detail}{self._install_hint()}")
 
     @filter.command("t2i_restart")
     async def cmd_restart(self, event: AstrMessageEvent):

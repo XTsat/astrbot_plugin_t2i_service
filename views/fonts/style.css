@@ -1,0 +1,891 @@
+/* 配色对齐 AstrBot 控制台（primary #3c96ca / #5ba4d4，surface 与 border 同色系），
+   深浅色由插件页桥写到 <html data-theme> 上，本文件只跟随变量，不自己判断。
+   状态色取自控制台的 success / warning / error，浅色下压深一档以保证正文可读性。 */
+
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --card: #ffffff;
+  --line: #d0d0d0;
+  --line-soft: rgba(0, 0, 0, 0.12);
+  --text: #1b1c1d;
+  --muted: rgba(0, 0, 0, 0.66);
+  --accent: #3c96ca;
+  --accent-strong: #2f86bd;
+  --accent-weak: rgba(60, 150, 202, 0.1);
+  --ok: #0f9d58;
+  --ok-weak: rgba(0, 200, 83, 0.12);
+  --warn: #b26a00;
+  --warn-weak: rgba(255, 193, 7, 0.16);
+  --danger: #c62828;
+  --danger-weak: rgba(244, 67, 54, 0.12);
+  --radius: 12px;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+/* 卡片与横幅都靠 hidden 属性显隐，而它们自身带 display 声明，
+   [hidden] 默认的 display:none 会被覆盖，这里补回来 */
+[hidden] {
+  display: none !important;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1a1a1a;
+  --card: #242424;
+  --line: #333333ee;
+  --line-soft: rgba(255, 255, 255, 0.12);
+  --text: #e8eaed;
+  --muted: rgba(255, 255, 255, 0.68);
+  --accent: #5ba4d4;
+  --accent-strong: #4a95c4;
+  --accent-weak: rgba(91, 164, 212, 0.16);
+  --ok: #52c41a;
+  --ok-weak: rgba(82, 196, 26, 0.14);
+  --warn: #faad14;
+  --warn-weak: rgba(250, 173, 20, 0.14);
+  --danger: #ff4d4f;
+  --danger-weak: rgba(255, 77, 79, 0.14);
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 20px;
+  /* 页面由宿主面板给宽高，自己不要再长出滚动条 */
+  overflow-x: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei",
+    "Noto Sans SC", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* 宿主把插件页放在固定高度的容器里，内容超长时滚动条躲不掉；
+   默认那套带上下三角的滚动条太抢眼，换成跟随主题的细条 */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+code {
+  font-family: "SFMono-Regular", Consolas, "Noto Sans Mono", monospace;
+  font-size: 0.92em;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--accent-weak);
+}
+
+h1 {
+  font-size: 1.65rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+h2 {
+  font-size: 1.02rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
+  margin: 4px 0;
+}
+
+.small {
+  font-size: 12.5px;
+}
+
+.boot {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 0;
+  color: var(--muted);
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+main {
+  /* 不再锁最大宽度：统计条与卡片网格跟着窗口宽度走，一排能放几张由 auto-fill 自己算 */
+  max-width: none;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---------------------------------------------------------------- 标题区 */
+
+.top {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.titles p {
+  margin: 6px 0 0;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* 状态 chip：一眼看到功能开关、家族覆盖与进行中的任务 */
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.chip {
+  font-size: 11.5px;
+  line-height: 1.7;
+  padding: 1px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.chip.ok {
+  color: var(--ok);
+  border-color: var(--ok);
+  background: var(--ok-weak);
+}
+
+.chip.warn {
+  color: var(--warn);
+  border-color: var(--warn);
+  background: var(--warn-weak);
+}
+
+/* ---------------------------------------------------------------- 提示条 */
+
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 13px;
+}
+
+.alert .alert-text {
+  flex: 1 1 auto;
+}
+
+.alert.warn {
+  background: var(--warn-weak);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.alert.danger {
+  background: var(--danger-weak);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ---------------------------------------------------------------- 卡片 */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+/* 段落默认带 UA 边距，卡片里统一成 0，只在前面还有别的元素时留 10px */
+.card > p {
+  margin: 0;
+}
+.card > * + p {
+  margin-top: 10px;
+}.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.stat {
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.stat .k {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.stat .v {
+  font-size: 15px;
+  font-weight: 600;
+  /* 只在放不下时才断词，别把「20.1 MB」这种值从中间切开 */
+  overflow-wrap: anywhere;
+}
+
+.stat .v.ok {
+  color: var(--ok);
+}
+
+.stat .v.warn {
+  color: var(--warn);
+}
+
+/* ---------------------------------------------------------------- 栏位切换 */
+
+/* main 是 flex 容器，.panel 作为单个 flex 子项必须自带 gap，否则栏位内的卡片会挤在一起 */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+button.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 8px 14px;
+  margin-bottom: -1px;
+}
+
+.tab-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+button.tab:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-weak);
+}
+
+button.tab[aria-selected="true"] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+button.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* 二级栏位：上游项目名做成胶囊，和顶层那排下划线栏位区分开 */
+.subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+button.subtab {
+  padding: 5px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+button.subtab:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+button.subtab[aria-selected="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  font-weight: 600;
+}
+
+button.subtab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* .panel 的间距只作用在直接子元素上，栏内再嵌一层的容器必须自己撑开，否则卡片会贴在一起 */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* 正文里的切栏按钮：看着是链接，行为是切换栏位 */
+button.link {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+}
+
+button.link:hover:not(:disabled) {
+  color: var(--accent-strong);
+}
+
+/* ---------------------------------------------------------------- 网格与卡片块 */
+
+.grid {
+  display: grid;
+  /* 列宽下限 280px：卡片宽一点，标题与说明不换行，代价是一排少放几张 */
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.tile {
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  padding: 11px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.tile .name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.tile .meta {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  /* 四列时卡片更窄，长文件名要能断行 */
+  overflow-wrap: anywhere;
+}
+
+/* 操作按钮跟标题同一行、靠右上角；窄卡片里让标题换行，按钮始终一行 */
+.tile .name .sub {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.tile .head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 6px 8px;
+}
+.tile .head .name {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* 按钮不再换行，长家族名自己断行/断词 */
+  overflow-wrap: anywhere;
+}
+.tile .acts {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.tile .acts button {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  font-size: 12px;
+  /* 按钮按下限宽度排版，文字不允许折成两行 */
+  white-space: nowrap;
+}
+
+/* 下载进度直接画在点下载的那张卡里：原来的按钮位置换成一条进度条 */
+.tile-job {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.tile-job .bar {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+
+.tile-job .fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.tile-job span {
+  flex: 0 0 auto;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 30px;
+  text-align: right;
+}
+
+.pill {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- 控件 */
+
+button {
+  font: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: #fff;
+}
+
+button.ghost {
+  background: transparent;
+  border-color: var(--line-soft);
+}
+
+button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+button.danger:hover:not(:disabled) {
+  background: var(--danger-weak);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* 两步确认的待确认态：按钮填红，明确下一次点就是真删 */
+button.armed,
+button.armed:hover:not(:disabled) {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 顶栏刷新按钮的进行中状态：文案已换成「刷新中…」，再补一个转圈提示 */
+button.ghost.loading::before {
+  content: "";
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  animation: spin 0.8s linear infinite;
+}
+
+input[type="url"],
+input[type="text"],
+input[type="file"] {
+  font: inherit;
+  padding: 6px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  min-width: 0;
+}
+
+input[type="url"]:focus,
+input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* 预览自检的自定义文字：独占一行，和下面的家族清单留出间距 */
+#specimen-text {
+  width: 100%;
+  margin: 8px 0 10px;
+}
+
+/* 上传/下载合成一体：控件之间不留缝、只在两端保留圆角，看起来是一个整体 */
+.input-group {
+  display: flex;
+  align-items: stretch;
+  margin-top: 8px;
+}
+
+.input-group + .input-group {
+  margin-top: 8px;
+}
+
+.input-group > * + * {
+  margin-left: -1px;
+}
+
+.input-group > :not(:last-child) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.input-group > :not(:first-child) {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.input-group > :focus-within,
+.input-group > :focus {
+  position: relative;
+  z-index: 1;
+}
+
+.input-group input[type="url"] {
+  flex: 1 1 auto;
+}
+
+.input-group input[type="text"] {
+  flex: 0 0 190px;
+}
+
+.input-group button {
+  flex: none;
+  padding: 6px 16px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------- 任务进度 */
+
+.job-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 600;
+}
+
+.job-status {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 12.5px;
+}
+
+.bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent-weak);
+  overflow: hidden;
+  margin: 9px 0 7px;
+}
+
+.fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+
+.job-msg {
+  font-size: 12.5px;
+}
+
+.job-log {
+  margin: 8px 0 0;
+  max-height: 150px;
+  overflow: auto;
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  font-family: "SFMono-Regular", Consolas, "Noto Sans Mono", monospace;
+}
+
+/* ---------------------------------------------------------------- 已装字体 */
+
+/* 已装字体按家族排成与「单个字体家族」同款的网格块 */
+.installed {
+  display: grid;
+  /* 列宽按内容走：至少 300px，文件名长就让卡片跟着变宽（最多 468px），
+     不主动撑满整行，短名字的卡片也不会被拉成空荡荡的一块 */
+  grid-template-columns: repeat(auto-fill, minmax(320px, max-content));
+  justify-content: start;
+  gap: 10px;
+}
+
+.installed .tile {
+  max-width: 520px;
+}
+
+.tile .files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.file-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px 8px;
+  font-size: 12.5px;
+}
+
+/* 一行放「文件名 · 体积 · 删除」：文件名过长省略，悬停 title 里看全名 */
+.file-line .fname {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-line .fmeta {
+  flex: 0 0 auto;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.file-line button {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 6px 0;
+}
+
+/* 预览自检的家族选择条：点一下只对比这几个，全不选就是全部 */
+.fam-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.head-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+select {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+button.pick {
+  padding: 4px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+button.pick:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+button.pick[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  font-weight: 600;
+}
+
+#specimen-caption {
+  margin: 8px 0 0;
+}
+
+#specimen-box {
+  margin-top: 10px;
+}
+
+/* 按渲染出来的原始像素宽度显示，窄屏才缩小；不再拉满卡片，避免低清图被放大发虚 */
+#specimen-img {
+  max-width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--line-soft);
+}
+
+/* ---------------------------------------------------------------- 吐司 */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  max-width: min(90vw, 620px);
+  padding: 9px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  z-index: 20;
+}
+
+.toast.err {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.toast.ok {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+@media (max-width: 640px) {
+  body {
+    padding: 12px;
+  }
+
+  .top {
+    flex-direction: column;
+  }
+
+  .actions {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .chips {
+    justify-content: flex-start;
+  }
+}

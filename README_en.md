@@ -12,6 +12,7 @@ The rendering engine is ported from [astrbot-t2i-service](https://github.com/Ast
 - **No extra container**: the render service runs inside the AstrBot process — no Docker, no port mapping, no image to maintain.
 - **Browser in one step**: turn on **Download Chromium** in the config and save (npmmirror mirror by default, ~200 MB); an existing system Chromium can be pointed at instead.
 - **Missing libraries installed for you**: when Chromium is downloaded but cannot launch (missing `libnspr4` and friends), the plugin finds out which libraries are missing and installs them; if the environment does not allow it, you get the exact command to run.
+- **Fonts bundled with the plugin**: missing fonts no longer need to be installed system-wide — download the preset families, paste a font link, or upload your own file from the plugin page, then render a preview card to confirm they took effect.
 - **No endpoint to copy by hand**: optionally the plugin writes its own address into AstrBot's text-to-image config, together with the text-to-image output switch.
 - **Rendering stays available**: while local rendering is unavailable (for example before Chromium is installed), requests are proxied to the fallback endpoint and the image is stored locally before it is handed to AstrBot.
 - **Status at a glance**: `/t2i_status` reports the service, the browser, system libraries, the endpoint and render stats; `/t2i_test` renders a card on the spot so you can see whether the chain works.
@@ -34,8 +35,29 @@ The rendering engine is ported from [astrbot-t2i-service](https://github.com/Ast
 | `/t2i_install` | everyone | Download and install Chromium; when the browser is present but system libraries are missing it installs those instead, streaming progress as it goes |
 | `/t2i_test` | everyone | Render a self-check card and send it back to verify the whole chain |
 | `/t2i_restart` | everyone | Restart the embedded render service and release Chromium |
+| `/t2i_fonts` | everyone | Show the font directory and render a font preview card |
 
 For a first run entirely in chat, go `/t2i_status` → `/t2i_install` → `/t2i_test`: see what is missing, install it, then render one image to confirm.
+
+## Fonts
+
+Templates ask for family names such as `Noto Serif SC` or `Inter`, which a server may not have; without them the template silently falls back to a default font and the layout drifts. This plugin supplies fonts as well: font files live under `fonts/` in the plugin data directory and Chromium picks them up while rendering — **no template edits and no system-wide font installation**.
+
+Where: WebUI plugin details → the **T2I Service Panel** page. It has two tabs: **Overview** (font library stats and job progress, plus upload, link, delete and preview) and **Upstream project** (whole template sets and the single-family list for the project it integrates with, with a second-level tab naming the project); the text inside each tab links to the other one, and the page says so when `fonts.enabled` is off. The page follows the AstrBot console: colors track its light/dark theme and the copy follows the interface language (Chinese/English); a row of chips at the top shows whether fonts are in effect and any running job, and a failed load explains why and offers **Retry**.
+
+**Overview** (stats, jobs, upload, download by link, delete, preview)
+
+- **Upload your own font**: pick a file on the page; the file is validated as a real font, and `fonts.upload_limit_mb` caps the size.
+- **Download from a link**: paste any direct font URL (`.ttf` / `.otf` / `.ttc`).
+- **Check it actually works**: **Render preview** draws a comparison card — the same sentence once per family, so a row that looks like the others tells you that font is not in effect. The installed family names are listed above the button: pick a few to compare just those, or pick none to compare every installed font. The text box takes whatever characters you want to compare (leave it empty for the default sentence). The resolution menu offers Standard/High/Ultra — sharper costs a bigger image. The weight menu shows both weights, regular only, or bold only; both lines share one font size so the weight difference is easy to see.
+- **Changes apply immediately**: adding or removing fonts makes the plugin restart its render process (Chromium only reads fonts at launch); **Reload fonts** does the same on demand.
+
+**Upstream project** (presets and whole templates)
+
+- **Preset families, one click**: the list is grouped by family (Noto Sans/Serif for SC/TC/JP, Inter, JetBrains Mono, LXGW WenKai and more). Hit download and a progress bar plus live log follow along; nothing needs restarting afterwards.
+- **Whole template in one click**: for [astrbot_plugin_qq_group_daily_analysis](https://github.com/SXP-Simon/astrbot_plugin_qq_group_daily_analysis/blob/main/docs/T2I_FONTS.md) (QQ group daily analysis) the font requirements of each report template are already mapped — pick a template name (Layout, Scrapbook, Spring Festival, ATRI ...) to install everything it needs, with anything still missing marked.
+
+The directory layout is one subdirectory per family, with license files such as `OFL.txt` kept next to the font so the origin travels with it. Direct GitHub access is very slow in mainland China, so preset fonts go through built-in mirrors and acceleration prefixes first — even 20+ MB CJK fonts download fine; you can supply your own prefix in the config page.
 
 ## Configuration
 
@@ -92,6 +114,17 @@ The plugin config page shows the five groups below; the **Default** column is wh
 | --- | --- | --- | --- |
 | Image retention (`image_lifetime_hours`) | number | `24` | AstrBot copies images away after fetching them; expired images on the plugin side are deleted on a timer |
 | Cleanup interval (`cleanup_interval_minutes`) | number | `60` | Informational only: the plugin actually checks every minute and deletes expired files |
+
+### Fonts (`fonts`)
+
+Downloading, uploading and removing font files all happen on the **T2I Service Panel** page; the config page only keeps the switch and source settings.
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| Enable font supply (`enabled`) | switch | on | When off, no font config is generated, `fonts/` is ignored, and the page's download/upload endpoints are disabled |
+| GitHub download acceleration prefix (`github_proxy`) | text | empty | Built-in jsDelivr mirror and two acceleration prefixes are already tried when empty; fill your own prefix (`https://your-prefix/`) only if none of them work |
+| Per-file upload limit (`upload_limit_mb`) | number | `128` | Size cap for uploads and link downloads; CJK fonts are commonly 10–30 MB |
+| Restart the browser after font changes (`restart_browser_on_change`) | switch | on | Chromium reads fonts at launch, so the render process must restart before new fonts apply; when off it waits until the browser is reclaimed while idle |
 
 ## Install and first run
 
@@ -173,8 +206,11 @@ Change **Listen port**, then re-enable **Write AstrBot's text-to-image endpoint 
 **Text-to-image broken after an AstrBot restart**
 Check that `t2i_endpoint` still targets the plugin's listen address; `/t2i_status` shows the address the plugin actually uses when the port was changed and not synced.
 
+**A font is installed but the template still uses something else**
+Click **Render preview** under **Overview** on the T2I Service Panel page (click the family names first to compare only those): each row is one font, and if several rows look identical none of those fonts are in effect. The usual causes are a render process that has not restarted yet (the **Restart the browser after font changes** option is off, or press **Reload fonts**) or a file that is really a renamed web page or archive — uploads and downloads both check the font file header. Note also that templates ask for `Noto Sans SC` while a system package provides `Noto Sans CJK SC`; one cannot stand in for the other.
+
 **Disk usage**
-Chromium takes ~200 MB in the plugin data directory; rendered images are kept 24 hours and cleaned on a timer.
+Chromium takes ~200 MB in the plugin data directory; rendered images are kept 24 hours and cleaned on a timer. Fonts add up per family — a full template set usually costs 20–60 MB.
 
 **Where are the logs**
 Render and cleanup logs sit together with the plugin's other logs — filter the AstrBot log by the plugin name or the `[t2i]` prefix. Successful renders do not log HTML content. Every generation leaves an access line (`POST /text2img/generate → status`, with duration and request size); a failed render records the reason and the traceback next to it, so you can match the two by timestamp.

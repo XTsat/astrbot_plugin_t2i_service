@@ -111,6 +111,16 @@ class EndpointConfig:
 
 
 @dataclass
+class FontsConfig:
+    """字体供给配置（字体文件本身的下载/上传走插件页面的「文转图服务面板」）。"""
+
+    enabled: bool = True
+    github_proxy: str = ""
+    upload_limit_mb: int = 128
+    restart_browser_on_change: bool = True
+
+
+@dataclass
 class StorageConfig:
     image_lifetime_hours: int = 24
     cleanup_interval_minutes: int = 60
@@ -123,6 +133,7 @@ class T2IConfig:
     browser: BrowserConfig = field(default_factory=BrowserConfig)
     endpoint: EndpointConfig = field(default_factory=EndpointConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
+    fonts: FontsConfig = field(default_factory=FontsConfig)
 
     @classmethod
     def from_raw(cls, raw: dict[str, Any] | None) -> "T2IConfig":
@@ -133,6 +144,7 @@ class T2IConfig:
         browser_raw = _section(raw, "browser")
         endpoint_raw = _section(raw, "endpoint")
         storage_raw = _section(raw, "storage")
+        fonts_raw = _section(raw, "fonts")
 
         server = ServerConfig(
             enabled=_as_bool(server_raw.get("enabled"), True),
@@ -188,6 +200,17 @@ class T2IConfig:
             ),
         )
 
+        fonts = FontsConfig(
+            enabled=_as_bool(fonts_raw.get("enabled"), True),
+            github_proxy=_as_str(fonts_raw.get("github_proxy")),
+            upload_limit_mb=min(
+                1024, max(1, _as_int(fonts_raw.get("upload_limit_mb"), 128))
+            ),
+            restart_browser_on_change=_as_bool(
+                fonts_raw.get("restart_browser_on_change"), True
+            ),
+        )
+
         if server.port <= 0 or server.port > 65535:
             server.port = DEFAULT_PORT
 
@@ -197,6 +220,7 @@ class T2IConfig:
             browser=browser,
             endpoint=endpoint,
             storage=storage,
+            fonts=fonts,
         )
 
     def resolve_service_url(self) -> str:

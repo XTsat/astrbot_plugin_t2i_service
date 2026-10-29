@@ -25,16 +25,17 @@
 |------|------|------|
 | `main.py` | ✅ | Star 插件入口：生命周期、4 个命令、周期清理、端点写入 |
 | `metadata.yaml` | ✅ | 插件元数据（name/version/author/desc/repo/astrbot_version/tags），**唯一版本源** |
-| `_conf_schema.json` | ✅ | WebUI 配置 Schema（`server` / `render` / `browser` / `endpoint` / `storage` 五段） |
+| `_conf_schema.json` | ✅ | WebUI 配置 Schema（`server` / `render` / `browser` / `endpoint` / `storage` / `fonts` 六段） |
 | `README.md` + `README_en.md` | ✅ | 用户文档，中文版为权威源 |
 | `CHANGELOG.md` | ✅ | 变更日志 |
 | `LICENSE` + `NOTICE` | ✅ | Apache-2.0；`NOTICE` 记录上游基底与移植说明，**不可删** |
 | `requirements.txt` | ✅ | 插件模式运行时依赖（当前只有固定版本的 `playwright`） |
-| `t2i_plugin/` | ✅ | 插件适配层：`config` / `browser` / `server` / `card` |
+| `t2i_plugin/` | ✅ | 插件适配层：`config` / `browser` / `server` / `card` / `fonts` / `font_web` |
 | `t2i_core/` | ✅ | 渲染核心（自上游移植）：`render` / `api` / `storage` / `metrics` / `util`，**零 AstrBot 依赖** |
 | `service/main.py` | ✅ | 独立服务（FastAPI）入口；插件模式下不执行 |
 | `tests/` | ✅ | pytest 套件（核心层 + 插件层），CI 主线 |
 | `.astrbot-plugin/i18n/` | 可选 | 元数据与页面 i18n（`zh-CN.json` / `en-US.json`），已存在 |
+| `views/` | 可选 | 插件内嵌页面（AstrBot 会自动发现 `views/<名字>/index.html`）；当前只有 `fonts/`（「文转图服务面板」：概览 / 对接项目两栏切换，共用一次清单请求） |
 | `docs/` | 可选 | 接口文档（`APIS.md`）、环境基线（`ENV-REPORT.md`）、独立服务文档与 README 配图 |
 | `tools/envlab/` | 可选 | 环境基线与抓图脚本，非运行时依赖 |
 | `pyproject.toml` | 可选 | 开发/独立服务依赖与 pytest 配置 |
@@ -104,6 +105,9 @@ service/main.py ─────────────────────�
 | 配置项 | `t2i_plugin/config.py` 的 dataclass 字段 + `_conf_schema.json` + README 配置表 |
 | 浏览器供给（检测、下载、清理） | `t2i_plugin/browser.py` |
 | 卡片用的 HTML 片段 | `t2i_plugin/card.py` |
+| 字体下载/上传/fontconfig 供给 | `t2i_plugin/fonts.py` |
+| 文转图服务面板的 Web API | `t2i_plugin/font_web.py` |
+| 字体页面（插件内嵌页面） | `views/fonts/`（一个页面，tab 切换「概览」与「对接项目」，「对接项目」栏里再用二级 tab 显示上游项目名；栏位切换按 DOM 里的 tab/panel 配对自动接管，加栏位只改 HTML，不要再拆视图；配色只跟随桥写到 `<html data-theme>` 的浅/深色，文案一律走 `pages.fonts.*` 的 i18n，不在 JS 里写死中文） |
 | HTTP 契约、鉴权、失败透传 | `t2i_plugin/server.py` |
 | 渲染与截图行为、模板处理 | `t2i_core/render.py` |
 | 图片存储与过期 | `t2i_core/storage.py`、`t2i_core/util.py` |
@@ -226,7 +230,7 @@ class T2IServicePlugin(Star):
 
 ### 5.1 配置 Schema（_conf_schema.json）
 
-顶层五段，与服务分层一一对应：
+顶层六段，与服务分层一一对应：
 
 | 段 | 关键项 | 说明 |
 |---|---|---|
@@ -235,13 +239,14 @@ class T2IServicePlugin(Star):
 | `browser` | `browsers_path`、`download_host`、`executable_path`、`auto_install_deps`、`cleanup_orphans`、`install_timeout_seconds` | 浏览器供给 |
 | `endpoint` | `auto_configure`、`service_url`、`current_service_url`（展示用，插件回写） | 是否写 AstrBot 主配置 |
 | `storage` | `image_lifetime_hours`、`cleanup_interval_minutes` | 图片留存与清理 |
+| `fonts` | `enabled`、`github_proxy`、`upload_limit_mb`、`restart_browser_on_change` | 字体供给（下载/上传在插件页面的「文转图服务面板」里做） |
 
 - 新增配置项 → 先在 `_conf_schema.json` 补 schema（type/hint/default/options），再在 `t2i_plugin/config.py` 加 dataclass 字段与默认值，最后补 README 配置表。
 - 配置项在文档（README 配置表、CHANGELOG）中引用时，**中文名在前、英文 key 在后**：统一写成「中文名（`key`）」形式，例如「并发渲染数（`render.concurrency`）」「鉴权令牌（`server.auth_token`）」；中文名取自 `_conf_schema.json` 的 `hint` 字段，`key` 用反引号包裹。
 
 ### 5.2 配置读取模式
 
-- **唯一入口**是 `T2IConfig.from_raw(dict(self._raw_config))`，产出嵌套 dataclass（`ServerConfig` / `RenderConfig` / `BrowserConfig` / `EndpointConfig` / `StorageConfig`）。业务代码读 `self.settings.render.concurrency`，**不要**到处 `self.config.get(...)`。
+- **唯一入口**是 `T2IConfig.from_raw(dict(self._raw_config))`，产出嵌套 dataclass（`ServerConfig` / `RenderConfig` / `BrowserConfig` / `EndpointConfig` / `StorageConfig` / `FontsConfig`）。业务代码读 `self.settings.render.concurrency`，**不要**到处 `self.config.get(...)`。
 - `_conf_schema.json` 是默认值的对外契约，`T2IConfig` 的默认值必须与它一致——`tests/test_plugin_config.py` 会守住这条。
 - 插件配置只读：`main.py` 把 AstrBot 下发的配置字典交给 `T2IConfig.from_raw`，自身不再散读；插件不写回自己的配置（`_conf_schema.json` 的默认值即最终默认值）。
 - **例外之一（`browser.download_chromium` / `browser.chromium_ready`）**：AstrBot 配置页只有开关 + 保存、没有按钮控件，所以「一键下载 Chromium」做成一次性开关——`main.py` 的 `_update_plugin_config` 把它收回，并回写浏览器就绪状态供配置页显示是否已就绪（开关本身常显，不用 `condition` 隐藏）。

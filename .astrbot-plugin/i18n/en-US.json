@@ -3,5 +3,176 @@
     "display_name": "AstrBot Text-to-Image Service",
     "desc": "HTML/template to image rendering inside the AstrBot process, ready to be used as AstrBot's text-to-image endpoint without an extra container. Built on the official text-to-image service with an identical interface and behavior.",
     "short_desc": "In-process text-to-image render service"
+  },
+  "views": {
+    "fonts": {
+      "title": "T2I Service Panel"
+    }
+  },
+  "pages": {
+    "fonts": {
+      "title": "T2I Service Panel",
+      "boot": "Connecting to the plugin…",
+      "subtitle": "Provides fonts for text-to-image rendering without touching the upstream render logic. Font files live under <code>fonts/</code> in the plugin data directory and take effect when the render process starts.",
+      "action": {
+        "refresh": "Reload fonts",
+        "refreshHint": "Rewrite the font config and reload rendering",
+        "refreshing": "Reloading…",
+        "retry": "Retry"
+      },
+      "warn": {
+        "disabled": "Fonts are disabled in the plugin config (<code>fonts.enabled</code>), so download and upload will not take effect.",
+        "api": "This AstrBot version does not support plugin page APIs (4.24.1 or newer is required). The font directory and config keys still work, but this page cannot download or upload fonts."
+      },
+      "chip": {
+        "state": {
+          "on": "Fonts in effect",
+          "pending": "Fonts not in effect yet, applied on the next render",
+          "off": "Fonts disabled"
+        },
+        "configHint": "{path} · FONTCONFIG_FILE={env}",
+        "configUnset": "(unset)",
+        "job": "Job {done}/{total}"
+      },
+      "tabs": {
+        "aria": "Font page"
+      },
+      "tab": {
+        "overview": "Overview",
+        "upstreamPlain": "Upstream project"
+      },
+      "stat": {
+        "files": "Font files",
+        "fccache": "fc-cache",
+        "limit": "Max file size",
+        "dir": "Font directory"
+      },
+      "value": {
+        "files": "{count} files · {size}",
+        "active": "Active",
+        "pending": "Pending",
+        "none": "Not generated",
+        "available": "Available",
+        "unavailable": "Unavailable"
+      },
+      "manage": {
+        "installed": {
+          "title": "Installed fonts",
+          "count": "{count} files · {size}",
+          "empty": "The font directory is still empty. Upload a font or download one from a link to start.",
+          "delete": "Delete",
+          "fileCount": "{count} files",
+          "sizeTotal": "{size} total",
+          "aliases": "Also named {list}",
+          "unknownFamily": "Unknown family",
+          "aliasesMore": "Also named {list} and {count} more"
+        },
+        "specimen": {
+          "title": "Font specimen self-check",
+          "hint": "Renders one line per selected family with the plugin renderer; with nothing selected every installed font is compared. Use the box above to compare specific characters. If a line looks identical to the others, that font is not really in effect.",
+          "action": "Render specimen",
+          "busy": "Rendering…",
+          "alt": "Font specimen",
+          "pickerAria": "Families to compare",
+          "caption": "Comparing {count} families: {list}",
+          "scaleAria": "Preview resolution",
+          "scaleNormal": "Standard",
+          "scaleHigh": "High",
+          "scaleUltra": "Ultra",
+          "textPlaceholder": "Custom text to compare (empty = default sentence)",
+          "weightAria": "Weight",
+          "weightBoth": "Both",
+          "weightRegular": "Regular",
+          "weightBold": "Bold"
+        },
+        "upload": {
+          "action": "Upload font",
+          "busy": "Uploading…"
+        },
+        "url": {
+          "namePlaceholder": "File name (optional)",
+          "action": "Download"
+        },
+        "add": {
+          "title": "Add fonts",
+          "hint": "Supports <code>.ttf</code> / <code>.otf</code> / <code>.ttc</code> files and checks that the file really is a font. You can also paste a direct link — when the name is left empty it is taken from the link. Use a GitHub proxy (e.g. the <code>https://gh-proxy.com/</code> prefix) for large files."
+        }
+      },
+      "upstream": {
+        "linkFallback": "Upstream project",
+        "project": {
+          "desc": "These fonts are organised around the layout needs of <a data-upstream-link href=\"#\" target=\"_blank\" rel=\"noreferrer\">astrbot_plugin_qq_group_daily_analysis（群聊日常分析）</a>: that plugin renders group chat reports into images and picks font families and weights per template. Each template below can be installed in one go.",
+          "hintBefore": "Other text-to-image templates can use these fonts as well — as long as the <code>font-family</code> in the template matches the family name inside the font file. To install your own fonts, open the",
+          "hintAfter": "tab and upload a file or paste a link."
+        },
+        "tabs": {
+          "aria": "Upstream project"
+        },
+        "templates": {
+          "title": "Download template fonts in one go"
+        },
+        "all": "Download all template fonts",
+        "families": {
+          "title": "Single font family",
+          "onlyMissing": "Only show missing",
+          "hint": "The list comes from the upstream project's <code>T2I_FONTS.md</code>; an installed family shows <strong>Delete</strong> instead of <strong>Download</strong>."
+        }
+      },
+      "template": {
+        "installedAll": "All {count} families installed: {list}",
+        "missing": "Missing: {list}",
+        "approx": "About {mb} MB · {note}",
+        "actionRemove": "Delete",
+        "download": "Download"
+      },
+      "family": {
+        "meta": "Weights {weights} · about {mb} MB",
+        "actionDownload": "Download",
+        "actionRemove": "Delete"
+      },
+      "families": {
+        "empty": "No font families are missing."
+      },
+      "list": {
+        "separator": ", "
+      },
+      "job": {
+        "label": "Font job",
+        "status": "{state} · {done}/{total} · {elapsed}s",
+        "state": {
+          "running": "Running",
+          "done": "Finished",
+          "failed": "Failed",
+          "error": "Failed"
+        },
+        "preparing": "Preparing"
+      },
+      "toast": {
+        "busy": "Another job is already running, please wait",
+        "started": "Job started",
+        "deleted": "Deleted",
+        "urlStarted": "Started downloading from the link",
+        "uploadUnsupported": "This AstrBot version cannot upload from a page; use a download link instead",
+        "uploaded": "Uploaded: {names}",
+        "uploadNoFamily": "Uploaded, but no font family name was found. Check that the file is a valid font.",
+        "templateStarted": "Started downloading the template fonts",
+        "keysStarted": "Started downloading the listed fonts",
+        "familyStarted": "Started downloading this font",
+        "refreshed": "Font config rewritten; the render process restarts on demand",
+        "allInstalled": "Every font family is already installed",
+        "allStarted": "Started downloading every font",
+        "deletedMany": "Removed {count} font files",
+        "nothingDelete": "No font files are installed for this family",
+        "armDelete": "Click again to delete",
+        "armDeleteMany": "Click again to delete the {count} font files of {name}",
+        "armDownload": "Click again to download {count} font families",
+        "armDeleteShared": "Click again to delete {count} file(s) of “{name}”. {affected} still use them and will miss fonts. To remove a single font instead, delete {shared} from the family list below",
+        "armDeleteFamilyShared": "Click again to delete {count} file(s) of “{name}”. {affected} still use them and will miss fonts"
+      },
+      "error": {
+        "generic": "Request failed, see the AstrBot log",
+        "noBridge": "The AstrBot plugin page bridge was not found. Open this page from the plugin page in the WebUI."
+      }
+    }
   }
 }

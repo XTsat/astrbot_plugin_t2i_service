@@ -2,7 +2,7 @@
 
 用假的 AstrBot Context 代替真实事件总线，验证：
 * 配置被正确解析进各组件；
-* 7 个 Web API 路由被注册；
+* 字体管理的 Web API 路由被注册；
 * initialize() 能真的把内嵌服务拉起来，terminate() 能干净地关掉；
 * 状态字典/状态卡片能构造出来。
 """
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import socket
 import time
 from pathlib import Path
@@ -72,12 +73,55 @@ async def test_config_is_parsed_into_components(plugin):
     assert instance.images_dir.is_dir()
 
 
-async def test_web_apis_are_not_registered(plugin):
+async def test_only_font_web_apis_are_registered(plugin):
+    # 插件当前只给「文转图服务面板」注册 Web API；渲染与存储都走 /text2img 契约，
+    # 不该在插件层另开入口。
     port = free_port()
     instance = plugin(
         {"server": {"enabled": False, "port": port}, "render": {"prelaunch": False}}
     )
-    assert instance.context.web_apis == []
+    routes = [route for route, _handler, _methods, _desc in instance.context.web_apis]
+    assert len(routes) == 8
+    assert all(route.startswith("/astrbot_plugin_t2i_service/fonts/") for route in routes)
+
+
+async def test_fonts_dir_is_supplied_to_renderer(plugin, monkeypatch):
+    # 先 setenv 占位：插件会直接改 os.environ，pytest 才会在结束时还原成「未设置」
+    monkeypatch.setenv("FONTCONFIG_FILE", "")
+    port = free_port()
+    instance = plugin(
+        {"server": {"enabled": False, "port": port}, "render": {"prelaunch": False}}
+    )
+    assert instance.fonts.fonts_dir == Path(instance.data_dir) / "fonts"
+
+    instance._apply_fonts_config()
+    # fontconfig 指向插件数据目录，Chromium 启动时才读得到这里下的字体
+    assert Path(os.environ["FONTCONFIG_FILE"]) == instance.fonts.config_path
+    assert instance.fonts.config_path.exists()
+    assert instance._installed_family_names() == []
+
+
+async def test_fonts_disabled_leaves_fontconfig_alone(plugin, monkeypatch):
+    monkeypatch.delenv("FONTCONFIG_FILE", raising=False)
+    port = free_port()
+    instance = plugin(
+        {
+            "server": {"enabled": False, "port": port},
+            "render": {"prelaunch": False},
+            "fonts": {"enabled": False},
+        }
+    )
+    instance._apply_fonts_config()
+    assert "FONTCONFIG_FILE" not in os.environ
+
+
+async def test_status_text_reports_fonts(plugin):
+    port = free_port()
+    instance = plugin(
+        {"server": {"enabled": False, "port": port}, "render": {"prelaunch": False}}
+    )
+    assert "渲染字体" in instance._status_text()
+    assert instance._status_payload()["fonts"]["dir"] == str(instance.fonts.fonts_dir)
 
 
 async def test_initialize_starts_embedded_server_and_terminate_stops_it(plugin):
