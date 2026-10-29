@@ -485,15 +485,11 @@ class T2IServicePlugin(Star):
             logger.warning(f"[t2i] 重启渲染进程失败：{exc}")
 
     async def _render_font_specimen(
-        self,
-        families: list[str],
-        scale: str = "normal",
-        text: str = "",
-        weights: str = "both",
+        self, families: list[str], scale: str = "normal"
     ) -> tuple[bool, str]:
         """渲染字体预览卡片，返回（是否成功, 图片路径或错误信息）。"""
         return await self.server.render_probe(
-            build_font_specimen(families, text, weights),
+            build_font_specimen(families),
             width=FONT_SPECIMEN_WIDTH,
             scale=scale,
         )

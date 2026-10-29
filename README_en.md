@@ -49,7 +49,7 @@ Where: WebUI plugin details → the **Render Fonts** page. It has two tabs: **Ov
 
 - **Upload your own font**: pick a file on the page; the file is validated as a real font, and `fonts.upload_limit_mb` caps the size.
 - **Download from a link**: paste any direct font URL (`.ttf` / `.otf` / `.ttc`).
-- **Check it actually works**: **Render preview** draws a comparison card — the same sentence once per family, so a row that looks like the others tells you that font is not in effect. The installed family names are listed above the button: pick a few to compare just those, or pick none to compare every installed font. The text box takes whatever characters you want to compare (leave it empty for the default sentence). The resolution menu offers Standard/High/Ultra — sharper costs a bigger image. The weight menu shows both weights, regular only, or bold only; both lines share one font size so the weight difference is easy to see.
+- **Check it actually works**: **Render preview** draws a comparison card — the same sentence once per family, so a row that looks like the others tells you that font is not in effect. The installed family names are listed above the button: pick a few to compare just those, or pick none to compare every installed font. The resolution menu offers Standard/High/Ultra — sharper costs a bigger image.
 - **Changes apply immediately**: adding or removing fonts makes the plugin restart its render process (Chromium only reads fonts at launch); **Reload fonts** does the same on demand.
 
 **Upstream project** (presets and whole templates)

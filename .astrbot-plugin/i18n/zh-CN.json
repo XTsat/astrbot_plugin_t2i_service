@@ -69,7 +69,7 @@
         },
         "specimen": {
           "title": "字体预览自检",
-          "hint": "用插件自己的渲染服务把选中的家族各画一行；不点选就是对比全部已装字体。上面的输入框可以填想专门对比的字词。若某一行与其它行字形完全相同，说明该字体没有真正生效。",
+          "hint": "用插件自己的渲染服务把选中的家族各画一行；不点选就是对比全部已装字体。若某一行与其它行字形完全相同，说明该字体没有真正生效。",
           "action": "渲染预览图",
           "busy": "渲染中…",
           "alt": "字体预览",
@@ -78,12 +78,7 @@
           "scaleAria": "预览图清晰度",
           "scaleNormal": "标准",
           "scaleHigh": "高清",
-          "scaleUltra": "超清",
-          "textPlaceholder": "自定义对比文字（留空用默认样句）",
-          "weightAria": "字重",
-          "weightBoth": "粗细",
-          "weightRegular": "细体",
-          "weightBold": "粗体"
+          "scaleUltra": "超清"
         },
         "upload": {
           "action": "上传字体",

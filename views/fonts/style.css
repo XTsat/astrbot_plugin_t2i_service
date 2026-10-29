@@ -612,12 +612,6 @@ input[type="text"]:focus {
   border-color: var(--accent);
 }
 
-/* 预览自检的自定义文字：独占一行，和下面的家族清单留出间距 */
-#specimen-text {
-  width: 100%;
-  margin: 8px 0 10px;
-}
-
 /* 上传/下载合成一体：控件之间不留缝、只在两端保留圆角，看起来是一个整体 */
 .input-group {
   display: flex;

@@ -55,8 +55,7 @@ class FontWebApi:
         manager: FontManager,
         *,
         enabled: bool = True,
-        specimen: Callable[[list[str], str, str, str], Awaitable[tuple[bool, str]]]
-        | None = None,
+        specimen: Callable[[list[str], str], Awaitable[tuple[bool, str]]] | None = None,
     ) -> None:
         self.plugin_name = plugin_name
         self.manager = manager
@@ -232,12 +231,8 @@ class FontWebApi:
             names = _installed_family_names(self.manager)
         raw_scale = payload.get("scale")
         scale = raw_scale if raw_scale in SPECIMEN_SCALES else "normal"
-        raw_text = payload.get("text")
-        text = raw_text.strip()[:SPECIMEN_TEXT_LIMIT] if isinstance(raw_text, str) else ""
-        raw_weights = payload.get("weights")
-        weights = raw_weights if raw_weights in SPECIMEN_WEIGHTS else "both"
         try:
-            ok, detail = await self.specimen(names, scale, text, weights)
+            ok, detail = await self.specimen(names, scale)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[t2i] 渲染字体预览失败：{exc}")
             return self._fail(f"渲染失败：{exc}", status_code=500)
@@ -247,24 +242,12 @@ class FontWebApi:
         if not data:
             return self._fail("渲染结果读取失败", status_code=500)
         return self._ok(
-            {
-                "image": f"data:image/png;base64,{data}",
-                "families": names,
-                "scale": scale,
-                "text": text,
-                "weights": weights,
-            }
+            {"image": f"data:image/png;base64,{data}", "families": names, "scale": scale}
         )
 
 
 # 预览图的像素比等级，与渲染器的 device_scale_factor_level 取值一致
 SPECIMEN_SCALES = ("normal", "high", "ultra")
-
-# 每个家族要画哪几种字重的行：两者都画 / 只画常规 / 只画粗体
-SPECIMEN_WEIGHTS = ("both", "regular", "bold")
-
-# 自定义预览文字的字符上限：预览图宽度有限，太长会挤成一片
-SPECIMEN_TEXT_LIMIT = 120
 
 
 def _installed_family_names(manager: FontManager) -> list[str]:

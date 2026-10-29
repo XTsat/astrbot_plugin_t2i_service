@@ -261,6 +261,7 @@ _FONT_SPECIMEN_STYLE = """
     font-family: "SFMono-Regular", Consolas, monospace;
   }
   .fam .sample { font-size: 24px; line-height: 1.5; color: #eaf1ff; word-break: break-word; }
+  .fam .small { font-size: 14px; color: #c8d6ee; margin-top: 2px; }
   .empty { color: #9fb2d4; font-size: 13.5px; padding: 10px 0 4px; }
   .hint {
     margin-top: 16px; padding: 10px 12px; border-radius: 10px; font-size: 12px;
@@ -280,43 +281,28 @@ def _css_family(name: str) -> str:
     return name.replace("'", "").replace("\\", "").replace('"', "")
 
 
-def build_font_specimen(
-    families: list[str],
-    text: str | None = None,
-    weights: str = "both",
-) -> str:
-    """构造字体预览卡片：逐个家族渲染同一段文字，用来确认字体真的生效。
+def build_font_specimen(families: list[str]) -> str:
+    """构造字体预览卡片：逐个家族渲染同一句话，用来确认字体真的生效。
 
-    ``text`` 非空时用它替换默认样句，方便专门对比某几个字；``weights`` 决定每个家族
-    画几行——``both`` 常规与粗体各一行，``regular`` 只画常规，``bold`` 只画粗体。两行
-    用同一个字号，粗细差异才看得清。只列出字体文件里读到的家族名（``font-family``
-    认的名字），文件名对不上时这里会直接暴露出来。
+    只列出字体文件里读到的家族名（``font-family`` 认的名字），文件名对不上时
+    这里会直接暴露出来。
     """
-    sample = (text or "").strip() or _SAMPLE_TEXT
-    show_regular = weights != "bold"
-    show_bold = weights != "regular"
     blocks: list[str] = []
     for name in families:
         # 家族名来自字体文件本身，仍按 HTML 转义后再放进样式/FONT 标签
         safe = _esc(name)
         css = _esc(_css_family(name))
-        lines = ""
-        if show_regular:
-            lines += f'<div class="sample" style="font-family: \'{css}\'">{_esc(sample)}</div>'
-        if show_bold:
-            lines += (
-                f'<div class="sample" style="font-family: \'{css}\'; font-weight: 700">'
-                f"{_esc(sample)} （粗体）</div>"
-            )
         blocks.append(
             '<div class="fam">'
             f'<div class="label">{safe}</div>'
-            f"{lines}"
+            f'<div class="sample" style="font-family: \'{css}\'">{_esc(_SAMPLE_TEXT)}</div>'
+            f'<div class="sample small" style="font-family: \'{css}\'; font-weight: 700">'
+            f"{_esc(_SAMPLE_TEXT)} （粗体）</div>"
             "</div>"
         )
     if not blocks:
         body_inner = (
-            '<div class="empty">还没有安装任何字体。请先在插件页「渲染字体」的「概览」'
+            '<div class="empty">还没有安装任何字体。请先在插件页「渲染字体」的「自己的字体」'
             "下载或上传字体。</div>"
         )
     else:

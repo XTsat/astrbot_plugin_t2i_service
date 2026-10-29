@@ -69,7 +69,7 @@
         },
         "specimen": {
           "title": "Font specimen self-check",
-          "hint": "Renders one line per selected family with the plugin renderer; with nothing selected every installed font is compared. Use the box above to compare specific characters. If a line looks identical to the others, that font is not really in effect.",
+          "hint": "The plugin's own renderer draws one line per selected family; with nothing selected it compares every installed font. If a line looks identical to the others, that font is not really in effect.",
           "action": "Render specimen",
           "busy": "Rendering…",
           "alt": "Font specimen",
@@ -78,12 +78,7 @@
           "scaleAria": "Preview resolution",
           "scaleNormal": "Standard",
           "scaleHigh": "High",
-          "scaleUltra": "Ultra",
-          "textPlaceholder": "Custom text to compare (empty = default sentence)",
-          "weightAria": "Weight",
-          "weightBoth": "Both",
-          "weightRegular": "Regular",
-          "weightBold": "Bold"
+          "scaleUltra": "Ultra"
         },
         "upload": {
           "action": "Upload font",

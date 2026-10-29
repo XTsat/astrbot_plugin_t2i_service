@@ -27,8 +27,6 @@ const els = {
   installedCount: $("installed-count"),
   specimenPicker: $("specimen-picker"),
   specimenScale: $("specimen-scale"),
-  specimenText: $("specimen-text"),
-  specimenWeight: $("specimen-weight"),
   specimenCaption: $("specimen-caption"),
   specimenBox: $("specimen-box"),
   specimenImg: $("specimen-img"),
@@ -1123,12 +1121,6 @@ function bindActions() {
     // 清晰度由渲染器的像素比等级决定：越高越清晰、图片也越大
     const scale = els.specimenScale ? els.specimenScale.value : "";
     if (scale) payload.scale = scale;
-    // 留空就用后端默认样句，方便只对比自己关心的字
-    const text = els.specimenText ? els.specimenText.value.trim() : "";
-    if (text) payload.text = text;
-    // 粗细：两行同字号，只画常规或只画粗体时可以并排比差异
-    const weights = els.specimenWeight ? els.specimenWeight.value : "";
-    if (weights) payload.weights = weights;
     const data = await apiPost("fonts/specimen", payload);
     els.btnSpecimen.disabled = false;
     els.btnSpecimen.textContent = t("manage.specimen.action", "渲染预览图");

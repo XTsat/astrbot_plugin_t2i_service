@@ -163,11 +163,6 @@
                 <option value="high" data-i18n="manage.specimen.scaleHigh">高清</option>
                 <option value="ultra" data-i18n="manage.specimen.scaleUltra">超清</option>
               </select>
-              <select id="specimen-weight" data-i18n-aria-label="manage.specimen.weightAria">
-                <option value="both" data-i18n="manage.specimen.weightBoth">粗细</option>
-                <option value="regular" data-i18n="manage.specimen.weightRegular">细体</option>
-                <option value="bold" data-i18n="manage.specimen.weightBold">粗体</option>
-              </select>
               <button class="ghost" id="btn-specimen" data-i18n="manage.specimen.action">
                 渲染预览图
               </button>
@@ -176,13 +171,6 @@
           <p class="muted small" data-i18n="manage.specimen.hint">
             用插件自己的渲染服务把选中的家族各画一行；不点选就是对比全部已装字体。若某一行与其它行字形完全相同，说明该字体没有真正生效。
           </p>
-          <input
-            id="specimen-text"
-            type="text"
-            maxlength="120"
-            autocomplete="off"
-            data-i18n-placeholder="manage.specimen.textPlaceholder"
-          />
           <div
             class="fam-picker"
             id="specimen-picker"
