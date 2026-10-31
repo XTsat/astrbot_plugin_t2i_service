@@ -32,9 +32,9 @@ The rendering engine is ported from [astrbot-t2i-service](https://github.com/Ast
 | Command | Permission | Description |
 | --- | --- | --- |
 | `/t2i_status` | everyone | Embedded service address, Chromium and system library state, render stats, plus AstrBot's current text-to-image endpoint and output switch |
-| `/t2i_install` | everyone | Download and install Chromium; when the browser is present but system libraries are missing it installs those instead, streaming progress as it goes |
+| `/t2i_install` | administrators | Download and install Chromium; when the browser is present but system libraries are missing it installs those instead, streaming progress as it goes |
 | `/t2i_test` | everyone | Render a self-check card and send it back to verify the whole chain |
-| `/t2i_restart` | everyone | Restart the embedded render service and release Chromium |
+| `/t2i_restart` | administrators | Restart the embedded render service and release Chromium |
 | `/t2i_fonts` | everyone | Show the font directory and render a font preview card |
 
 For a first run entirely in chat, go `/t2i_status` → `/t2i_install` → `/t2i_test`: see what is missing, install it, then render one image to confirm.

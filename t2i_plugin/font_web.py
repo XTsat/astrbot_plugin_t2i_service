@@ -16,14 +16,9 @@ import time
 from pathlib import Path
 from typing import Awaitable, Callable
 
+from astrbot.api import logger
+
 from t2i_plugin.fonts import FontManager
-
-try:
-    from astrbot.api import logger
-except Exception:  # noqa: BLE001
-    import logging
-
-    logger = logging.getLogger(__name__)
 
 try:
     from astrbot.api.web import (

@@ -13,7 +13,7 @@ from t2i_core import logger as core_logger
 
 
 class RecordingLogger:
-    """记录收到的调用，模拟宿主注入的 logger（loguru 与 logging 都长这样）。"""
+    """记录收到的调用，模拟宿主注入的 logger（任何 logger 都是这几个方法）。"""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, dict]] = []
@@ -107,3 +107,31 @@ def test_stdlib_logger_target_gets_traceback() -> None:
 
     assert handler.records
     assert handler.records[-1].exc_info is not None
+
+
+def test_default_outlet_writes_to_stderr(capsys) -> None:
+    """没人注入时（独立服务形态）核心层日志写到 stderr，而不是被静默丢掉。"""
+    core_logger.get_logger().warning("独立服务形态的兜底出口")
+
+    captured = capsys.readouterr()
+    assert "[t2i] 独立服务形态的兜底出口" in captured.err
+
+
+def test_host_logger_without_exc_info_support_still_logs() -> None:
+    """宿主方法不认 exc_info 关键字时必须退回纯文本，日志调用不能反噬业务。"""
+
+    class StrictLogger:
+        def __init__(self) -> None:
+            self.messages: list[str] = []
+
+        def warning(self, message: str) -> None:
+            self.messages.append(message)
+
+    inner = StrictLogger()
+    core_logger.set_logger(inner)
+    try:
+        raise RuntimeError("boom")
+    except RuntimeError:
+        core_logger.get_logger().warning("渲染失败", exc_info=True)
+
+    assert inner.messages == ["渲染失败"]

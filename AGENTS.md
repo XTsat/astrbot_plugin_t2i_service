@@ -93,7 +93,7 @@ main.py ──► t2i_plugin/{config,browser,card,server} ──► t2i_core/{re
 service/main.py ────────────────────────────────────► t2i_core
 ```
 
-- `t2i_core/` 是移植层，**禁止** import `astrbot`、`t2i_plugin`、`main`（唯一例外是文档字符串里提到上游）。破坏这条就等于砍掉独立服务形态，`tests/test_api.py`、`test_metrics.py` 也会一起失效。
+- `t2i_core/` 是移植层，**禁止** import `astrbot`、`t2i_plugin`、`main`（唯一例外是文档字符串里提到上游）。破坏这条就等于砍掉独立服务形态，`tests/test_api.py`、`test_metrics.py` 也会一起失效。核心层的日志因此不绑定任何库：模块里 `logger = get_logger()`（`t2i_core/logger.py`），插件模式由 `main.py` 注入 `astrbot.api.logger`，独立服务模式无人注入时落到内置 stderr 出口。
 - `t2i_plugin/` 允许 import `t2i_core`，但**不 import `main.py`**（避免循环）。
 - 只有 `main.py` 接触 AstrBot API（`astrbot.api.*`、`astrbot.core.utils.astrbot_path`）。
 
@@ -131,7 +131,8 @@ service/main.py ─────────────────────�
 
 - **Python 3.11+**（`.python-version` 与 `pyproject.toml` 的 `requires-python` 均为 3.11；CI 也用 3.11）。
 - **AstrBot**：`metadata.yaml` 声明 `astrbot_version: ">=4.16,<5"`；用到的 API 是 `astrbot.api.star`（`Context`、`Star`）、`astrbot.api.event`（`filter`、`AstrMessageEvent`）、`astrbot.api`（`AstrBotConfig`、`logger`）、`astrbot.api.web`（`json_response`、`error_response`）、`astrbot.core.utils.astrbot_path.get_astrbot_plugin_data_path`。
-- **插件层可依赖 AstrBot 运行时自带的包**：`aiohttp`、`jinja2`、`loguru`、`pydantic`、`typing_extensions`。**不要**在 `requirements.txt` 里重复声明它们，也不要为了它们写降级分支。
+- **插件层可依赖 AstrBot 运行时自带的包**：`aiohttp`、`jinja2`、`pydantic`、`typing_extensions`。**不要**在 `requirements.txt` 里重复声明它们，也不要为了它们写降级分支。
+- **日志库不在可依赖之列**：logger 必须且只能 `from astrbot.api import logger`（上架规范），第三方日志库（`loguru` 等）与标准库 `logging` 一律不许进运行时依赖，也不许写 `logging.getLogger` 降级分支（`tests/test_logging_policy.py` 会拦）。
 - **浏览器**：`playwright==1.64.1` 固定版本——Playwright 的版本与浏览器构建目录（`chromium-1248`）绑定，改动前先看 `docs/ENV-REPORT.md` 的实测数据。
 - **依赖声明三处，改动必须同步**：`requirements.txt`（插件运行时）、`requirements-standalone.txt`（独立服务）、`pyproject.toml`（开发/工具）。
 - **惰性 import**：`playwright` 不在模块顶层导入（未安装时插件仍要能加载并给出提示），实际渲染路径里按需导入。
@@ -194,7 +195,8 @@ class T2IServicePlugin(Star):
 
 ### 4.5 日志
 
-- 统一用 `loguru.logger`（AstrBot 内部同款，插件层与核心层一致），**每条必须带 `[t2i]` 前缀**；后台安装任务用 `[t2i-install]` 区分
+- **日志来源唯一**：`from astrbot.api import logger`。**严禁**第三方日志库（`loguru` 等）与标准库 `logging`（含 `logging.getLogger(__name__)` 降级分支），也严禁把 logger 写进依赖声明——上架审核会直接否决。
+- **每条必须带 `[t2i]` 前缀**；后台安装任务用 `[t2i-install]` 区分。核心层消息不带前缀，由 `main.py` 注入时统一补 `[t2i] `。
 - 错误信息带 emoji 前缀（如 `❌`、`⚠️`）
 - 精确捕获异常类型（`asyncio.TimeoutError`、`OSError`、`ValidationError`），禁止空 `except: pass`（除非注释说明理由）
 - 异常分类记录：ValueError/ValidationError = 非法参数，OSError = 文件/IO 错误，`PlaywrightNotInstalledError` = 环境未就绪；单条失败不影响主流程
@@ -222,7 +224,8 @@ class T2IServicePlugin(Star):
 ### 4.9 权限控制
 
 - 管理类命令加 `@filter.permission_type(filter.PermissionType.ADMIN)`
-- **本项目现状偏差（待收紧）**：现有 4 个命令尚未加权限过滤，其中 `/t2i_install`（下载约 200 MB）与 `/t2i_restart`（重启服务）明显属于管理操作。**新增命令凡涉及下载、重启、写配置的，必须直接加 ADMIN**；收紧存量命令属于用户可见的行为变更，需要先在提交说明里提出并由用户确认。
+- `/t2i_install`（下载约 200 MB）与 `/t2i_restart`（重启服务）已按本条收紧为 ADMIN；`/t2i_status`、`/t2i_test`、`/t2i_fonts` 仍是全员可用（只读或自检）。
+- **新增命令凡涉及下载、重启、写配置的，必须直接加 ADMIN**；再收紧存量命令属于用户可见的行为变更，需要先在提交说明里提出并由用户确认。
 
 ---
 
@@ -293,9 +296,9 @@ async def cmd_status(self, event: AstrMessageEvent):
 | 命令 | 权限 | 说明 |
 |------|------|------|
 | `/t2i_status` | 全部 | 查看服务地址、浏览器状态、渲染统计与端点配置 |
-| `/t2i_install` | 全部（见 4.9） | 下载并安装 Chromium；`/t2i_install mirror` 走国内镜像 |
+| `/t2i_install` | 管理员（见 4.9） | 下载并安装 Chromium；`/t2i_install mirror` 走国内镜像 |
 | `/t2i_test` | 全部 | 渲染自检卡片并回图，验证整条链路 |
-| `/t2i_restart` | 全部（见 4.9） | 重启内嵌渲染服务并释放 Chromium |
+| `/t2i_restart` | 管理员（见 4.9） | 重启内嵌渲染服务并释放 Chromium |
 
 ---
 
@@ -542,7 +545,7 @@ README 正文严格按以下 4 大板块组织，但不强制使用 `##` 标题�
 - [ ] 架构：新代码放在 2.2 表格指定的落点；`t2i_core/` 没有新增 `astrbot` 依赖
 - [ ] 双形态：插件模式与独立服务模式都还能起来，HTTP 契约未被插件层私有改动
 - [ ] 注释：只写 non-obvious reason，无残留中间状态、无被注释掉的旧代码
-- [ ] 日志：`[t2i]` 前缀，异常分类记录，无空 catch，高频轮询用 debug
+- [ ] 日志：只用 `astrbot.api` 的 logger（无 `loguru` / `logging`），`[t2i]` 前缀，异常分类记录，无空 catch，高频轮询用 debug
 - [ ] 配置：新增配置项已在 `_conf_schema.json`、`t2i_plugin/config.py` 与 README 配置表三处同步
 - [ ] 权限：新增的下载/重启/写配置类命令已加 `@filter.permission_type(filter.PermissionType.ADMIN)`
 - [ ] CHANGELOG：`[Unreleased]` 已追加条目，**只写相对上一版的变化**、同一变化已合并为一条（无重复条目），条目面向用户（无内部实现细节、无复杂形容即可看懂），保留了他人的既有记录

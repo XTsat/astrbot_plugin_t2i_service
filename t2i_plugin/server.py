@@ -22,10 +22,8 @@ import time
 from pathlib import Path
 
 from aiohttp import ClientError, ClientSession, ClientTimeout, web
+from astrbot.api import logger
 from jinja2.exceptions import SecurityError
-from t2i_core.logger import get_logger as _get_logger
-
-logger = _get_logger()
 from pydantic import ValidationError
 
 from t2i_core.metrics import (

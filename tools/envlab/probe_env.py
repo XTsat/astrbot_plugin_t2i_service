@@ -23,7 +23,7 @@ from pathlib import Path
 BROWSERS_PATH = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "/AstrBot/data/ms-playwright")
 INTERESTING_MODULES = [
     "playwright", "fastapi", "uvicorn", "jinja2", "boto3", "prometheus_client",
-    "loguru", "pytest", "httpx", "aiohttp", "PIL", "quart",
+    "pytest", "httpx", "aiohttp", "PIL", "quart",
 ]
 NEEDED_LIBS = [
     "libnss3.so", "libnspr4.so", "libatk-1.0.so.0", "libatk-bridge-2.0.so.0",

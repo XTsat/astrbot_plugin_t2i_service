@@ -52,9 +52,10 @@ from astrbot.core.utils.astrbot_path import (  # noqa: E402
     get_astrbot_plugin_data_path,
 )
 
-from t2i_core.logger import (
-    reset_logger as reset_core_logger,  # noqa: E402
-    set_logger as set_core_logger,  # noqa: E402
+from t2i_core.logger import (  # noqa: E402
+    PREFIX as CORE_LOG_PREFIX,
+    reset_logger as reset_core_logger,
+    set_logger as set_core_logger,
 )
 from t2i_core.render import Text2ImgRender  # noqa: E402
 from t2i_core.util import cleanup_expired_files  # noqa: E402
@@ -170,12 +171,11 @@ class T2IServicePlugin(Star):
 
     async def initialize(self) -> None:
         """插件启用时：清理孤儿进程、启动内嵌服务。"""
-        # 核心层默认走 loguru，日志会散在 t2i_core.* 名下；插件模式把 AstrBot
-        # 的插件专属 logger（Star 自带的 logging.Logger，名字 astrbot.plugin.<name>）
-        # 注入进去，渲染/清理日志才归到插件名下。不能用 astrbot.api.logger——
-        # 那是 loguru 直连对象，绕过宿主的字段 enricher 会让 sink 缺 plugin_tag 报错。
+        # 核心层不能 import astrbot（独立服务形态要复用它，见 AGENTS.md 2.2），
+        # 日志出口靠这里注入：把 astrbot.api.logger 交给核心层，渲染/清理日志才和
+        # 插件层走同一个宿主 logger；[t2i] 前缀由注入时统一补，核心层消息里不用再写。
         try:
-            set_core_logger(self.logger)
+            set_core_logger(logger, CORE_LOG_PREFIX)
         except Exception:  # pragma: no cover - 防御：注入失败不影响启动
             pass
         logger.info(f"[t2i] 插件初始化：数据目录 {self.data_dir}")
@@ -694,6 +694,7 @@ class T2IServicePlugin(Star):
                 + (f"\n{tail}" if tail else "")
             )
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("t2i_install")
     async def cmd_install(self, event: AstrMessageEvent):
         """安装 Chromium；浏览器已就绪但缺系统库时改为补装系统依赖。"""
@@ -806,6 +807,7 @@ class T2IServicePlugin(Star):
         else:
             yield event.plain_result(f"❌ 字体预览渲染失败：{detail}{self._install_hint()}")
 
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @filter.command("t2i_restart")
     async def cmd_restart(self, event: AstrMessageEvent):
         """重启内嵌服务并释放 Chromium。"""

@@ -1,5 +1,5 @@
 # 插件运行时依赖（AstrBot 安装/更新插件时会自动 pip install 本文件）。
-# AstrBot 自身已带 aiohttp / jinja2 / loguru / pydantic / typing_extensions，
+# AstrBot 自身已带 aiohttp / jinja2 / pydantic / typing_extensions，
 # 这里只列出插件必需的第三方包，并固定 playwright 版本（浏览器版本目录与
 # playwright 版本绑定，见 docs/ENV-REPORT.md）。
 playwright==1.64.1

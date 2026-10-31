@@ -29,13 +29,7 @@ from typing import Awaitable, Callable
 
 from t2i_plugin.browser import DONE, FAILED, IDLE, RUNNING
 
-try:
-    from astrbot.api import logger
-except Exception:  # noqa: BLE001
-    # 单测环境里没有 astrbot；插件运行时不会走到这里（与 browser.py 同一策略）。
-    import logging
-
-    logger = logging.getLogger(__name__)
+from astrbot.api import logger
 
 
 # ---------------------------------------------------------------- 常量

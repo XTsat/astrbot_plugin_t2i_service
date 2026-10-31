@@ -25,15 +25,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-try:
-    from astrbot.api import logger
-except Exception:  # noqa: BLE001
-    # 两种情况都会走到这里：单测环境里没有 astrbot；
-    # 或者 astrbot 在导入时初始化数据目录而当前工作目录不可写（如只读挂载）。
-    # 插件真正运行时 cwd 是 AstrBot 根目录，不会触发。
-    import logging
-
-    logger = logging.getLogger(__name__)
+from astrbot.api import logger
 
 
 IDLE = "idle"
