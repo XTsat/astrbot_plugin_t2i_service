@@ -68,6 +68,24 @@ class StderrLogger:
         self._write("ERROR", _render_text(message, args), True)
 
 
+def _caller_stacklevel() -> int:
+    """算出宿主该回溯几层栈帧才落到业务调用点。
+
+    日志先经 ``_CurrentLogger`` → ``PrefixedLogger`` → ``_emit`` 才到宿主，层数会随
+    包装改动变化，硬编码容易失效，所以按「栈帧属于本模块」现场数。
+    """
+    # 宿主侧第 1 层是本模块的 _emit，再往上每层包装帧加 1，越过本模块即业务调用点。
+    level = 2
+    try:
+        frame = sys._getframe(2)  # _emit 的调用者
+    except ValueError:  # 栈太浅（直接调用内部函数）时退回默认层级
+        return 1
+    while frame is not None and frame.f_globals.get("__name__") == __name__:
+        level += 1
+        frame = frame.f_back
+    return level
+
+
 def _emit(inner: Any, level: str, text: str, kwargs: dict[str, Any]) -> None:
     """把一条日志投递给宿主 logger，并消化 stdlib 风格的关键字参数。
 
@@ -75,6 +93,9 @@ def _emit(inner: Any, level: str, text: str, kwargs: dict[str, Any]) -> None:
     的常见写法，宿主的 logger 未必接受这个关键字（历史上就是它抛 TypeError，
     把一次渲染失败变成 aiohttp 的裸 500）。这里统一收口：带堆栈的调用尽量按
     ``exc_info=`` 传下去，宿主不认就退回不带堆栈的调用，保证日志调用不会反噬业务。
+
+    ``stacklevel`` 同理必须修正：宿主按栈帧回填「文件:行号」，不修正的话每条核心层
+    日志都指向本模块的 _emit，出问题时看不出是哪段渲染代码打的。
     """
     method = getattr(inner, level, None)
     if not callable(method):
@@ -89,14 +110,21 @@ def _emit(inner: Any, level: str, text: str, kwargs: dict[str, Any]) -> None:
         exc_info is not _MISSING and exc_info is not None and exc_info is not False
     )
 
+    stacklevel = _caller_stacklevel()
+    attempts: list[dict[str, Any]] = []
     # exception() 自带当前堆栈，重传 exc_info 只会让宿主再拼一次。
     if wants_trace and level != "exception":
+        attempts.append({"exc_info": exc_info, "stacklevel": stacklevel})
+        attempts.append({"exc_info": exc_info})
+    attempts.append({"stacklevel": stacklevel})
+    attempts.append({})
+
+    for extra_kwargs in attempts:
         try:
-            method(text, exc_info=exc_info)
+            method(text, **extra_kwargs)
             return
-        except TypeError:  # 宿主签名不认 exc_info：退化成纯文本，日志本身不能失败
-            pass
-    method(text)
+        except TypeError:  # 宿主签名不认某个关键字：逐级降级，日志无论如何不能失败
+            continue
 
 
 class PrefixedLogger:

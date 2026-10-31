@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from t2i_core import logger as core_logger
 
@@ -79,7 +80,10 @@ def test_set_logger_routes_core_records_to_host() -> None:
     core_logger.set_logger(inner)
     core_logger.get_logger().warning("宿主接管")
 
-    assert inner.calls == [("warning", "宿主接管", {})]
+    level, message, kwargs = inner.calls[-1]
+    assert (level, message) == ("warning", "宿主接管")
+    # 宿主按 stacklevel 回填「文件:行号」，包装层必须把层级修正到业务调用点。
+    assert isinstance(kwargs.get("stacklevel"), int)
 
 
 def test_stdlib_logger_target_gets_traceback() -> None:
@@ -107,6 +111,33 @@ def test_stdlib_logger_target_gets_traceback() -> None:
 
     assert handler.records
     assert handler.records[-1].exc_info is not None
+
+
+def test_records_point_at_the_real_call_site() -> None:
+    """日志要落在业务调用点，而不是 logger.py 自己的 _emit 上。"""
+
+    class Capture(logging.Handler):
+        def __init__(self) -> None:
+            super().__init__()
+            self.records: list[logging.LogRecord] = []
+
+        def emit(self, record: logging.LogRecord) -> None:
+            self.records.append(record)
+
+    stdlib_logger = logging.getLogger("t2i-test-call-site")
+    stdlib_logger.setLevel(logging.DEBUG)
+    handler = Capture()
+    stdlib_logger.addHandler(handler)
+    core_logger.set_logger(stdlib_logger, "[t2i] ")
+    try:
+        core_logger.get_logger().info("定位检查")
+    finally:
+        stdlib_logger.removeHandler(handler)
+
+    record = handler.records[-1]
+    assert Path(record.pathname).resolve() == Path(__file__).resolve()
+    assert record.funcName == "test_records_point_at_the_real_call_site"
+    assert record.getMessage() == "[t2i] 定位检查"
 
 
 def test_default_outlet_writes_to_stderr(capsys) -> None:
