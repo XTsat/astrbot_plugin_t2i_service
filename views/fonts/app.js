@@ -47,6 +47,17 @@ const els = {
   t2iLightbox: $("t2i-lightbox"),
   t2iLightboxImg: $("t2i-lightbox-img"),
   t2iLightboxClose: $("t2i-lightbox-close"),
+  t2iCreate: $("btn-t2i-create"),
+  t2iEditor: $("t2i-editor"),
+  t2iEditorForm: $("t2i-editor-form"),
+  t2iEditorTitle: $("t2i-editor-title"),
+  t2iEditorName: $("t2i-editor-name"),
+  t2iEditorSourceField: $("t2i-editor-source-field"),
+  t2iEditorSource: $("t2i-editor-source"),
+  t2iEditorContent: $("t2i-editor-content"),
+  t2iEditorError: $("t2i-editor-error"),
+  t2iEditorCancel: $("t2i-editor-cancel"),
+  t2iEditorSubmit: $("t2i-editor-submit"),
   projectPanel: $("panel-project"),
 };
 
@@ -70,6 +81,8 @@ const state = {
   t2iShots: new Map(),
   t2iLoading: false,
   t2iRestart: false,
+  // 编辑器当前编辑的模板名；空串表示「新建」
+  t2iEditing: "",
   jobSig: "",
 };
 
@@ -1287,6 +1300,11 @@ function renderT2iCard(item, slot) {
     );
   }
   actions.push(
+    `<button class="ghost" data-edit="${escapeHtml(name)}">${escapeHtml(
+      t("t2i.edit", "编辑"),
+    )}</button>`,
+  );
+  actions.push(
     `<button class="ghost" data-preview="${escapeHtml(name)}">${escapeHtml(
       t("t2i.preview", "重新渲染"),
     )}</button>`,
@@ -1435,6 +1453,130 @@ async function applyT2iTemplate(name, button) {
   );
 }
 
+/** 新建 / 编辑共用一个弹窗：编辑时名字锁死（名字即文件名，改名等于另建一个）。 */
+async function openT2iEditor(name) {
+  if (!els.t2iEditor) return;
+  state.t2iEditing = name || "";
+  const editing = Boolean(name);
+  fillT2iEditorSources();
+  els.t2iEditorTitle.textContent = editing
+    ? t("t2i.editTitle", "编辑模板")
+    : t("t2i.createTitle", "新建模板");
+  els.t2iEditorSubmit.textContent = editing
+    ? t("t2i.save", "保存")
+    : t("t2i.create", "新建模板");
+  els.t2iEditorName.value = name || "";
+  els.t2iEditorName.disabled = editing;
+  els.t2iEditorSourceField.hidden = editing;
+  els.t2iEditorContent.value = "";
+  hideT2iEditorError();
+  if (typeof els.t2iEditor.showModal === "function") els.t2iEditor.showModal();
+  else els.t2iEditor.setAttribute("open", "");
+  if (!editing) {
+    els.t2iEditorName.focus();
+    return;
+  }
+  const data = await apiPost("templates/read", { name });
+  if (data && typeof data.content === "string") {
+    els.t2iEditorContent.value = data.content;
+    els.t2iEditorContent.focus();
+  } else {
+    showT2iEditorError(state.lastError || t("t2i.readFailed", "读不到模板内容"));
+  }
+}
+
+function closeT2iEditor() {
+  if (!els.t2iEditor) return;
+  if (typeof els.t2iEditor.close === "function") els.t2iEditor.close();
+  els.t2iEditor.removeAttribute("open");
+}
+
+/** 起始内容下拉：空白模板 + 现有模板（复制一份改）。 */
+function fillT2iEditorSources() {
+  if (!els.t2iEditorSource) return;
+  const options = [
+    `<option value="">${escapeHtml(t("t2i.source.blank", "空白模板"))}</option>`,
+  ];
+  for (const item of (state.t2i && state.t2i.templates) || []) {
+    options.push(
+      `<option value="${escapeHtml(item.name)}">${escapeHtml(t2iLabel(item))}</option>`,
+    );
+  }
+  els.t2iEditorSource.innerHTML = options.join("");
+}
+
+function showT2iEditorError(message) {
+  if (!els.t2iEditorError) return;
+  els.t2iEditorError.textContent = message;
+  els.t2iEditorError.hidden = false;
+}
+
+function hideT2iEditorError() {
+  if (!els.t2iEditorError) return;
+  els.t2iEditorError.textContent = "";
+  els.t2iEditorError.hidden = true;
+}
+
+const T2I_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+
+async function submitT2iEditor() {
+  const editing = Boolean(state.t2iEditing);
+  const name = (els.t2iEditorName.value || "").trim();
+  const content = els.t2iEditorContent.value || "";
+  if (!editing && !T2I_NAME_PATTERN.test(name)) {
+    // 与后端同一套规则，先在页面上拦一次，省一个来回
+    showT2iEditorError(
+      t(
+        "t2i.badName",
+        "模板名只能用字母、数字、下划线和短横线，以字母或数字开头，最长 64 个字符。",
+      ),
+    );
+    els.t2iEditorName.focus();
+    return;
+  }
+  if (editing && !content.trim()) {
+    showT2iEditorError(t("t2i.emptyContent", "模板内容不能为空。"));
+    els.t2iEditorContent.focus();
+    return;
+  }
+  els.t2iEditorSubmit.disabled = true;
+  const data = editing
+    ? await apiPost("templates/save", { name, content })
+    : await apiPost("templates/create", {
+        name,
+        content,
+        source: els.t2iEditorSource.value,
+      });
+  els.t2iEditorSubmit.disabled = false;
+  if (!data) {
+    showT2iEditorError(state.lastError || t("t2i.saveFailed", "保存失败，看日志里的详细报错"));
+    return;
+  }
+  const saved = (data.template && data.template.name) || name;
+  const label = t2iLabel(data.template || { name: saved });
+  closeT2iEditor();
+  // 内容变了，旧的预览图不再代表它，删掉缓存记录让它重渲
+  state.t2iShots.delete(saved);
+  await loadT2iTemplates({ force: true });
+  const slot = (state.t2i && state.t2i.slot) || {};
+  const appliedNow = Boolean(slot.active && slot.source === saved);
+  if (appliedNow) {
+    toast(
+      t("t2i.toastSavedApplied", "已保存 {name}，点「重新应用」后新的样式才会用于出图", {
+        name: label,
+      }),
+      "ok",
+    );
+  } else {
+    toast(
+      editing
+        ? t("t2i.toastSaved", "已保存 {name}", { name: label })
+        : t("t2i.toastCreated", "已新建模板 {name}，可以点「应用」切过去", { name: label }),
+      "ok",
+    );
+  }
+}
+
 function openT2iZoom(name) {
   const shot = state.t2iShots.get(name);
   if (!shot || shot.status !== "ready" || !shot.image) return;
@@ -1467,6 +1609,29 @@ function bindT2i() {
       }
       const apply = event.target.closest("button[data-apply]");
       if (apply) await applyT2iTemplate(apply.dataset.apply, apply);
+    });
+  }
+  if (els.t2iGrid) {
+    els.t2iGrid.addEventListener("click", async (event) => {
+      const edit = event.target.closest("button[data-edit]");
+      if (edit) await openT2iEditor(edit.dataset.edit);
+    });
+  }
+  if (els.t2iCreate) {
+    els.t2iCreate.addEventListener("click", () => openT2iEditor(""));
+  }
+  if (els.t2iEditorForm) {
+    els.t2iEditorForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await submitT2iEditor();
+    });
+  }
+  if (els.t2iEditorCancel) {
+    els.t2iEditorCancel.addEventListener("click", closeT2iEditor);
+  }
+  if (els.t2iEditor) {
+    els.t2iEditor.addEventListener("click", (event) => {
+      if (event.target === els.t2iEditor) closeT2iEditor();
     });
   }
   if (els.t2iLightboxClose) {

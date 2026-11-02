@@ -168,7 +168,8 @@
         },
         "source": {
           "builtin": "Built-in",
-          "custom": "Custom"
+          "custom": "Custom",
+          "blank": "Blank template"
         },
         "updated": "Updated {date}",
         "variables": "Template variables: {list}",
@@ -179,7 +180,24 @@
           "base": "Base",
           "astrbot_powershell": "PowerShell style",
           "astrbot_vitepress": "VitePress docs style"
-        }
+        },
+        "create": "New template",
+        "createTitle": "New template",
+        "editTitle": "Edit template",
+        "edit": "Edit",
+        "save": "Save",
+        "cancel": "Cancel",
+        "nameLabel": "Template name",
+        "nameHint": "Letters, digits, underscores and dashes only, starting with a letter or digit. It shows up in the template list once saved.",
+        "sourceLabel": "Start from",
+        "contentLabel": "Template HTML (leave empty to use the choice above)",
+        "badName": "Names may only use letters, digits, underscores and dashes, start with a letter or digit, and stay under 65 characters.",
+        "emptyContent": "Template content cannot be empty.",
+        "saveFailed": "Could not save; check the log for details",
+        "readFailed": "Could not read the template content",
+        "toastCreated": "Created {name}; hit Apply to switch to it",
+        "toastSaved": "Saved {name}",
+        "toastSavedApplied": "Saved {name}; hit Reapply to use the new layout"
       },
       "toast": {
         "busy": "Another job is already running, please wait",

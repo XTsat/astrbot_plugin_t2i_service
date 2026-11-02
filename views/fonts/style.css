@@ -972,6 +972,83 @@ button.pick[aria-pressed="true"] {
   background: var(--card);
 }
 
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* 模板编辑器：新建与编辑共用同一个弹窗，字段少所以直接铺成一列 */
+.t2i-editor {
+  width: min(94vw, 860px);
+  max-height: 90vh;
+  overflow: auto;
+  padding: 18px 20px 20px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.t2i-editor::backdrop {
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.t2i-editor h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.t2i-field {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.t2i-field > span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.t2i-field input[type="text"],
+.t2i-field select {
+  width: 100%;
+}
+
+.t2i-field textarea {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.t2i-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.t2i-editor input[type="text"]:disabled {
+  color: var(--muted);
+  background: var(--bg);
+}
+
+.t2i-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
 @media (max-width: 640px) {
   body {
     padding: 12px;
@@ -1000,6 +1077,19 @@ button.pick[aria-pressed="true"] {
 
   .t2i-actions {
     flex-direction: row;
+    width: 100%;
+  }
+
+  .t2i-editor {
+    width: 96vw;
+    padding: 14px;
+  }
+
+  .t2i-form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .t2i-form-actions button {
     width: 100%;
   }
 }

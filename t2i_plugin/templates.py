@@ -57,11 +57,156 @@ logger.info("hello t2i")
 
 收尾一句：*渲染由文转图服务插件提供*。"""
 
+# 新建模板时的起始内容：一个能直接出图的骨架——标题、正文、代码块、表格都排好，
+# 用户只要改里面的样式或结构就能得到自己的风格。
+BLANK_TEMPLATE = """<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>新模板 {{ version }}</title>
+  <meta name="description" content="在面板里新建的模板，改这里就能改样子。">
+  <style>
+    :root {
+      --paper: #fbfbfa;
+      --ink: #202224;
+      --muted: #6b7075;
+      --line: #e2e5e7;
+      --fill: #f4f5f5;
+      --accent: #2f86bd;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 36px 32px 48px;
+      overflow-wrap: break-word;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: "Noto Sans CJK SC", "Microsoft YaHei", -apple-system, "Segoe UI", Arial, sans-serif;
+      font-size: 24px;
+      line-height: 1.72;
+    }
+
+    .sheet {
+      width: min(100%, 880px);
+      margin: 0 auto;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 1.2em 0 0.5em;
+      line-height: 1.3;
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 1.5em;
+    }
+
+    h2 {
+      font-size: 1.25em;
+    }
+
+    p,
+    ul,
+    ol,
+    blockquote,
+    table,
+    pre {
+      margin: 0.8em 0;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    blockquote {
+      margin-left: 0;
+      padding: 0.2em 1em;
+      color: var(--muted);
+      border-left: 3px solid var(--line);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92em;
+    }
+
+    th,
+    td {
+      padding: 0.45em 0.6em;
+      text-align: left;
+      border: 1px solid var(--line);
+    }
+
+    th {
+      background: var(--fill);
+    }
+
+    code {
+      padding: 0.12em 0.35em;
+      border-radius: 4px;
+      background: var(--fill);
+      font-size: 0.9em;
+    }
+
+    pre {
+      padding: 1em;
+      overflow-x: auto;
+      border-radius: 8px;
+      background: var(--fill);
+    }
+
+    pre code {
+      padding: 0;
+      background: none;
+    }
+
+    img {
+      max-width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <article class="sheet" id="content"></article>
+  <textarea id="markdown-source" hidden>{{ text | safe }}</textarea>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    (function () {
+      var source = document.getElementById("markdown-source").value;
+      var target = document.getElementById("content");
+
+      // marked 走 CDN，群里没网时解析不出来，这时退回纯文本，至少内容还在
+      if (window.marked && typeof window.marked.parse === "function") {
+        target.innerHTML = window.marked.parse(source);
+        if (window.AstrBotT2IShiki) {
+          window.AstrBotT2IShiki.highlightAllCodeBlocks(target, "github-light");
+        }
+      } else {
+        target.textContent = source;
+      }
+    })();
+  </script>
+</body>
+</html>
+"""
+
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.S | re.I)
 _DESC_RE = re.compile(
     r"""<meta[^>]+name=["']description["'][^>]*content=["'](.*?)["']""", re.S | re.I
 )
 _VAR_RE = re.compile(r"\{\{\s*([A-Za-z_]\w*)")
+
+# 模板名会被直接拼成文件名，也存在于 AstrBot 的模板清单里，所以只放行这一小撮字符
+_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 
 
 def _path_helper(name: str) -> Path | None:
@@ -186,6 +331,61 @@ class TemplateGallery:
             if path.is_file():
                 return path.read_text(encoding="utf-8")
         raise FileNotFoundError(f"模板不存在：{name}")
+
+    # ------------------------------------------------------------ 新建与编辑
+
+    def create(
+        self,
+        name: str,
+        *,
+        source: str = "",
+        content: str = "",
+    ) -> dict[str, object]:
+        """新建一个用户模板：起始内容可以是粘贴的 HTML，也可以复制某个现有模板。"""
+        target = self._writable_path(name, must_not_exist=True)
+        self._write(target, self._initial_content(source=source, content=content))
+        return self.describe(name)
+
+    def save(self, name: str, content: str) -> dict[str, object]:
+        """覆盖写用户模板；内置模板被改后用户目录里会多一份副本（AstrBot 用户优先）。"""
+        text = (content or "").strip()
+        if not text:
+            raise ValueError("模板内容不能为空。")
+        target = self._writable_path(name, must_not_exist=False)
+        if not text.endswith("\n"):
+            text += "\n"
+        self._write(target, text)
+        return self.describe(name)
+
+    def _writable_path(self, name: str, *, must_not_exist: bool) -> Path:
+        if not _NAME_RE.fullmatch(name or ""):
+            raise ValueError(
+                "模板名只能用字母、数字、下划线和短横线，需以字母或数字开头，最长 64 个字符。"
+            )
+        if name == SLOT_NAME:
+            raise ValueError(f"模板名 {SLOT_NAME} 被本插件占用，请换一个。")
+        if must_not_exist and (
+            (self.user_dir / f"{name}.html").is_file()
+            or (self.builtin_dir / f"{name}.html").is_file()
+        ):
+            raise FileExistsError(f"模板已存在：{name}")
+        return self.user_dir / f"{name}.html"
+
+    def _initial_content(self, *, source: str, content: str) -> str:
+        pasted = (content or "").strip()
+        if pasted:
+            return pasted if pasted.endswith("\n") else pasted + "\n"
+        copied = (source or "").strip()
+        if copied:
+            return self.read(copied)
+        return BLANK_TEMPLATE
+
+    def _write(self, target: Path, text: str) -> None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # 原子替换：AstrBot 或预览渲染可能正好在读这个文件，不能让它读到半截内容
+        temp = target.with_name(f"{target.name}.tmp")
+        temp.write_text(text, encoding="utf-8")
+        temp.replace(target)
 
     # ------------------------------------------------------------ 槽位
 

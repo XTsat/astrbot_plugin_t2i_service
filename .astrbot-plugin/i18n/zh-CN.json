@@ -168,7 +168,8 @@
         },
         "source": {
           "builtin": "内置",
-          "custom": "自定义"
+          "custom": "自定义",
+          "blank": "空白模板"
         },
         "updated": "更新于 {date}",
         "variables": "模板变量：{list}",
@@ -179,7 +180,24 @@
           "base": "默认模板",
           "astrbot_powershell": "PowerShell 风格",
           "astrbot_vitepress": "VitePress 文档风格"
-        }
+        },
+        "create": "新建模板",
+        "createTitle": "新建模板",
+        "editTitle": "编辑模板",
+        "edit": "编辑",
+        "save": "保存",
+        "cancel": "取消",
+        "nameLabel": "模板名",
+        "nameHint": "只能用字母、数字、下划线和短横线，以字母或数字开头；保存后它会出现在模板清单里。",
+        "sourceLabel": "起始内容",
+        "contentLabel": "模板 HTML（留空就用上面的起始内容）",
+        "badName": "模板名只能用字母、数字、下划线和短横线，以字母或数字开头，最长 64 个字符。",
+        "emptyContent": "模板内容不能为空。",
+        "saveFailed": "保存失败，看日志里的详细报错",
+        "readFailed": "读不到模板内容",
+        "toastCreated": "已新建模板 {name}，可以点「应用」切过去",
+        "toastSaved": "已保存 {name}",
+        "toastSavedApplied": "已保存 {name}，点「重新应用」后新的样式才会用于出图"
       },
       "toast": {
         "busy": "已有任务在进行中，请等待完成",

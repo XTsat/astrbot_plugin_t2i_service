@@ -68,6 +68,7 @@ Which HTML template AstrBot uses to turn long text into an image is a config val
 - **Switching needs no restart**: the first apply needs one AstrBot restart (it only reads the template name at startup); after that, applying another template takes effect on the next message.
 - **Easy to go back**: to return to a stock AstrBot template, change the active template in AstrBot's config page — the plugin will not override your choice.
 - **Where templates come from**: the ones shipped with AstrBot (default / PowerShell / VitePress) plus anything you put in `data/t2i_templates/`; on a name clash yours wins.
+- **Build your own**: **New template** at the top right of the tab starts you from a blank scaffold, a copy of an existing template, or HTML you paste in; the template shows up in the list right away, and **Edit** on any card lets you change its content and save. Names may only use letters, digits, underscores and dashes, and the file lands in AstrBot's `data/t2i_templates/`.
 - **Look before you switch**: **Re-render** on a card redraws its preview from the current template content, so an edited template shows its new look right away.
 
 ## Configuration

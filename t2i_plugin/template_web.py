@@ -6,7 +6,10 @@
 
 * ``templates/list``     —— 模板清单 + 槽位状态；
 * ``templates/preview``  —— 渲染（或直接返回缓存的）预览图；
-* ``templates/apply``    —— 把模板写进槽位并写 AstrBot 的 t2i 配置。
+* ``templates/apply``    —— 把模板写进槽位并写 AstrBot 的 t2i 配置；
+* ``templates/create``   —— 新建用户模板（空白 / 复制现有 / 粘贴 HTML）；
+* ``templates/save``     —— 覆盖保存用户模板的内容；
+* ``templates/read``     —— 取模板原文给页面编辑器预填。
 
 写 AstrBot 主配置的动作留在 ``main.py``：它才拿得到 ``Context``。
 """
@@ -80,6 +83,24 @@ class TemplateWebApi:
                 ["POST"],
                 "应用模板",
             ),
+            (
+                f"/{self.plugin_name}/templates/create",
+                self.page_create,
+                ["POST"],
+                "新建模板",
+            ),
+            (
+                f"/{self.plugin_name}/templates/save",
+                self.page_save,
+                ["POST"],
+                "保存模板",
+            ),
+            (
+                f"/{self.plugin_name}/templates/read",
+                self.page_read,
+                ["POST"],
+                "读取模板原文",
+            ),
         ]
         for route, handler, methods, desc in routes:
             try:
@@ -150,6 +171,52 @@ class TemplateWebApi:
         except (ValueError, OSError, FileNotFoundError) as exc:
             return self._fail(str(exc))
         return self._ok(result)
+
+    async def page_create(self) -> object:
+        payload = await request.json(default={})
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            return self._fail("缺少模板名")
+        try:
+            item = await asyncio.to_thread(
+                self.gallery.create,
+                name,
+                source=str(payload.get("source") or "").strip(),
+                content=str(payload.get("content") or ""),
+            )
+        except FileExistsError as exc:
+            return self._fail(str(exc), status_code=409)
+        except (ValueError, OSError, UnicodeDecodeError) as exc:
+            return self._fail(str(exc))
+        logger.info(f"[t2i] 已新建模板 {name}")
+        return self._ok({"template": item, "created": True})
+
+    async def page_save(self) -> object:
+        payload = await request.json(default={})
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            return self._fail("缺少模板名")
+        try:
+            item = await asyncio.to_thread(
+                self.gallery.save, name, str(payload.get("content") or "")
+            )
+        except (ValueError, OSError, UnicodeDecodeError) as exc:
+            return self._fail(str(exc))
+        logger.info(f"[t2i] 已保存模板 {name}")
+        return self._ok({"template": item, "created": False})
+
+    async def page_read(self) -> object:
+        payload = await request.json(default={})
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            return self._fail("缺少模板名")
+        try:
+            content = await asyncio.to_thread(self.gallery.read, name)
+        except FileNotFoundError as exc:
+            return self._fail(str(exc), status_code=404)
+        except (ValueError, OSError, UnicodeDecodeError) as exc:
+            return self._fail(str(exc))
+        return self._ok({"name": name, "content": content})
 
 
 def _data_url(data: str) -> str:

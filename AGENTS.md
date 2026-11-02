@@ -108,7 +108,7 @@ service/main.py ─────────────────────�
 | 字体下载/上传/fontconfig 供给 | `t2i_plugin/fonts.py` |
 | 面板的字体 Web API | `t2i_plugin/font_web.py` |
 | 面板的模板 Web API | `t2i_plugin/template_web.py` |
-| 转图模板清单 / 应用 / 预览缓存 | `t2i_plugin/templates.py`（用户目录与内置目录的模板合并、槽位模板写入、预览图缓存） |
+| 转图模板清单 / 新建编辑 / 应用 / 预览缓存 | `t2i_plugin/templates.py`（用户目录与内置目录的模板合并、新建与保存用户模板、槽位模板写入、预览图缓存） |
 | 面板页面（插件内嵌页面） | `views/fonts/`（一个页面，tab 切换「概览」「T2i 模板」「对接项目」，「对接项目」栏里再用二级 tab 显示上游项目名；栏位切换按 DOM 里的 tab/panel 配对自动接管，加栏位只改 HTML，不要再拆视图；配色只跟随桥写到 `<html data-theme>` 的浅/深色，文案一律走 `pages.fonts.*` 的 i18n，不在 JS 里写死中文） |
 | HTTP 契约、鉴权、失败透传 | `t2i_plugin/server.py` |
 | 渲染与截图行为、模板处理 | `t2i_core/render.py` |

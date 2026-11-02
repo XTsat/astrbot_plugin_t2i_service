@@ -181,6 +181,63 @@ def test_preview_cache_prunes_old_files(dirs, tmp_path):
 # ---------------------------------------------------------------- 页面接口
 
 
+# ---------------------------------------------------------------- 新建与编辑
+
+
+def test_create_writes_blank_scaffold(dirs):
+    gallery, _, user = dirs
+    item = gallery.create("my_style")
+    saved = (user / "my_style.html").read_text(encoding="utf-8")
+    # 空白模板要能直接出图：带上 AstrBot 注入的正文变量
+    assert "{{ text | safe }}" in saved
+    assert item["name"] == "my_style"
+    assert item["source"] == "custom"
+    assert "my_style" in {entry["name"] for entry in gallery.list_templates()}
+
+
+def test_create_copies_existing_template(dirs):
+    gallery, _, user = dirs
+    gallery.create("copy_of_base", source="base")
+    assert (user / "copy_of_base.html").read_text(encoding="utf-8") == RICH
+
+
+def test_create_prefers_pasted_content_over_copy(dirs):
+    gallery, _, user = dirs
+    gallery.create("pasted", source="base", content=PLAIN + "\n<!-- pasted -->")
+    saved = (user / "pasted.html").read_text(encoding="utf-8")
+    assert "pasted" in saved
+    assert saved != RICH
+
+
+def test_create_rejects_bad_and_taken_names(dirs):
+    gallery, _, _ = dirs
+    for bad in ("../evil", "has space", "", SLOT_NAME, "-leading"):
+        with pytest.raises(ValueError):
+            gallery.create(bad)
+    with pytest.raises(FileExistsError):
+        gallery.create("base")  # 内置同名也算已存在
+    gallery.create("dup")
+    with pytest.raises(FileExistsError):
+        gallery.create("dup")
+
+
+def test_save_overwrites_user_copy_and_marks_modified(dirs):
+    gallery, _, user = dirs
+    gallery.save("base", "<html>{{ text }} saved</html>")
+    assert "saved" in (user / "base.html").read_text(encoding="utf-8")
+    # 改过内置模板后，清单里要能看出这一份是本地改过的
+    assert gallery.describe("base")["modified"] is True
+    with pytest.raises(ValueError):
+        gallery.save("base", "   ")
+
+
+def test_save_leaves_no_temp_file(dirs):
+    gallery, _, user = dirs
+    gallery.create("tmpcheck")
+    gallery.save("tmpcheck", PLAIN)
+    assert not list(user.glob("*.tmp"))
+
+
 class _FakeRequest:
     def __init__(self, payload=None) -> None:
         self.payload = payload or {}
@@ -235,7 +292,7 @@ def test_web_registers_prefixed_template_routes(dirs):
     gallery, _, _ = dirs
     context = _FakeContext()
     routes = _build_api(gallery).register(context)
-    assert len(routes) == len(context.routes) == 3
+    assert len(routes) == len(context.routes) == 6
     for route, handler, methods, desc in context.routes:
         assert route.startswith("/astrbot_plugin_t2i_service/templates/")
         assert methods in (["GET"], ["POST"])
@@ -354,6 +411,59 @@ async def test_web_apply_rejects_bad_names(dirs, monkeypatch):
     response = await api.page_apply()
     assert response["code"] == 400
     assert "不存在" in response["message"]
+
+
+@pytest.mark.skipif(
+    not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有页面 Web API"
+)
+async def test_web_create_then_read(dirs, monkeypatch):
+    gallery, _, _ = dirs
+    _patch_envelope(monkeypatch)
+    api = _build_api(gallery)
+
+    monkeypatch.setattr(
+        template_web, "request", _FakeRequest({"name": "made", "source": "base"})
+    )
+    response = await api.page_create()
+    assert response["code"] == 0
+    assert response["data"]["created"] is True
+    assert response["data"]["template"]["name"] == "made"
+
+    monkeypatch.setattr(template_web, "request", _FakeRequest({"name": "made"}))
+    read = await api.page_read()
+    assert read["code"] == 0
+    assert read["data"]["content"] == RICH
+
+    # 重名要能区分出来：页面据此提示「换个名字」而不是「保存失败」
+    monkeypatch.setattr(template_web, "request", _FakeRequest({"name": "made"}))
+    assert (await api.page_create())["code"] == 409
+
+
+@pytest.mark.skipif(
+    not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有页面 Web API"
+)
+async def test_web_save_and_read_errors(dirs, monkeypatch):
+    gallery, _, _ = dirs
+    _patch_envelope(monkeypatch)
+    api = _build_api(gallery)
+
+    monkeypatch.setattr(template_web, "request", _FakeRequest({"name": "nope"}))
+    assert (await api.page_read())["code"] == 404
+
+    monkeypatch.setattr(template_web, "request", _FakeRequest({}))
+    assert (await api.page_create())["code"] == 400
+    assert (await api.page_save())["code"] == 400
+    assert (await api.page_read())["code"] == 400
+
+    monkeypatch.setattr(
+        template_web,
+        "request",
+        _FakeRequest({"name": "made", "content": "<html>{{ text }}</html>"}),
+    )
+    saved = await api.page_save()
+    assert saved["code"] == 0
+    assert saved["data"]["created"] is False
+    assert gallery.describe("made")["source"] == "custom"
 
 
 async def _slot_state() -> dict[str, object]:
