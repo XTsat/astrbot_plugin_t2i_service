@@ -62,6 +62,46 @@ LICENSE_NAME = "OFL.txt"
 # ---------------------------------------------------------------- 数据结构
 
 
+# 原版商业字体 → 已下载的开放字体：模板里写的是 Yu Mincho / 楷体这些名字，
+# 本机真装了原版时 fontconfig 会用原版（append 只在本族缺席时生效），否则退到替代字体。
+# 这样连别人的模板（只写了原版字名）也能拿到字形相近的结果。
+FONT_ALIASES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Yu Mincho", ("Noto Serif JP", "Noto Serif CJK SC", "Noto Serif SC")),
+    ("YuMincho", ("Noto Serif JP", "Noto Serif CJK SC")),
+    ("MS Mincho", ("Noto Serif JP", "Noto Serif CJK SC")),
+    ("Hiragino Mincho ProN", ("Noto Serif JP", "Noto Serif CJK SC")),
+    ("Yu Gothic", ("Noto Sans JP", "Noto Sans CJK SC", "Noto Sans SC")),
+    ("YuGothic", ("Noto Sans JP", "Noto Sans CJK SC")),
+    ("Meiryo", ("Noto Sans JP", "Noto Sans CJK SC")),
+    ("Microsoft YaHei", ("Noto Sans SC", "Noto Sans CJK SC")),
+    ("微软雅黑", ("Noto Sans SC", "Noto Sans CJK SC")),
+    ("SimSun", ("Noto Serif SC", "Noto Serif CJK SC")),
+    ("宋体", ("Noto Serif SC", "Noto Serif CJK SC")),
+    ("KaiTi", ("LXGW WenKai", "Noto Serif CJK SC")),
+    ("STKaiti", ("LXGW WenKai", "Noto Serif CJK SC")),
+    ("楷体", ("LXGW WenKai", "Noto Serif CJK SC")),
+    ("FangSong", ("Noto Serif CJK SC", "Noto Serif SC")),
+    ("仿宋", ("Noto Serif CJK SC", "Noto Serif SC")),
+)
+
+
+# 同一款商业字体的不同写法（英文名 / 别名 / 中文名）归到一组：提示里只说一次，
+# 不然「Yu Mincho」和「YuMincho」会并排出现两遍。组名用 Windows 上的正式名。
+ORIGINAL_FONT_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Yu Mincho", ("Yu Mincho", "YuMincho", "游明朝")),
+    ("Yu Gothic", ("Yu Gothic", "YuGothic", "游ゴシック")),
+    ("MS Mincho", ("MS Mincho", "ＭＳ 明朝")),
+    ("Hiragino Mincho ProN", ("Hiragino Mincho ProN",)),
+    ("Meiryo", ("Meiryo", "メイリオ")),
+    ("Microsoft YaHei", ("Microsoft YaHei", "微软雅黑")),
+    ("SimSun", ("SimSun", "宋体")),
+    ("KaiTi", ("KaiTi", "STKaiti", "楷体")),
+    ("FangSong", ("FangSong", "仿宋")),
+)
+_ORIGINAL_TO_GROUP = {
+    alias.casefold(): group for group, aliases in ORIGINAL_FONT_GROUPS for alias in aliases
+}
+
 @dataclass(frozen=True)
 class FontFamily:
     """一个字体家族（= fonts/ 下的一个子目录）。"""
@@ -88,6 +128,8 @@ class FontTemplate:
     families: tuple[str, ...]
     note: str = ""
     name_en: str = ""
+    # 面板分栏用："upstream" 归对接项目那一栏，"t2i" 归本插件模板那一栏
+    group: str = "upstream"
 
 
 @dataclass
@@ -156,6 +198,15 @@ FONT_FAMILIES: dict[str, FontFamily] = {
             ("ofl/notosansjp/NotoSansJP[wght].ttf",),
             9.6,
             "日文黑体",
+        ),
+        FontFamily(
+            "notoserifjp",
+            "Noto Serif JP",
+            "400 / 500 / 600 / 700 / 900",
+            GOOGLE_REPO,
+            ("ofl/notoserifjp/NotoSerifJP[wght].ttf",),
+            13.6,
+            "日文明朝体，替 ATRI 日记模板里的 Yu Mincho / MS Mincho",
         ),
         FontFamily(
             "notoserifsc",
@@ -292,15 +343,23 @@ FONT_FAMILIES: dict[str, FontFamily] = {
         FontFamily(
             "lxgwwenkai",
             "LXGW WenKai（霞鹜文楷）",
-            "Regular / Medium / Mono Regular",
+            "Regular / Medium",
             LXGW_REPO,
             (
                 "fonts/TTF/LXGWWenKai-Regular.ttf",
                 "fonts/TTF/LXGWWenKai-Medium.ttf",
-                "fonts/TTF/LXGWWenKaiMono-Regular.ttf",
             ),
-            78.0,
-            "ATRI 模板专用，三个文件一起装",
+            49.3,
+            "中文楷体，日记/手账类模板的正文",
+        ),
+        FontFamily(
+            "lxgwwenkaimono",
+            "LXGW WenKai Mono（霞鹜文楷等宽）",
+            "Mono Regular",
+            LXGW_REPO,
+            ("fonts/TTF/LXGWWenKaiMono-Regular.ttf",),
+            24.8,
+            "霞鹜文楷的等宽版，只有代码块用得上；不用代码块可以不装",
         ),
     )
 }
@@ -357,9 +416,17 @@ FONT_TEMPLATES: dict[str, FontTemplate] = {
         FontTemplate(
             "ATRI",
             "ATRI",
-            ("lxgwwenkai",),
-            "需一次装好三个霞鹜文楷文件",
+            ("lxgwwenkai", "lxgwwenkaimono"),
+            "含等宽版，代码块要用",
             name_en="ATRI",
+        ),
+        FontTemplate(
+            "diary_card",
+            "日记卡（本插件模板）",
+            ("notoserifjp", "notosansjp", "lxgwwenkai"),
+            "两套亚托莉日记模板用到的字体。原模板需要 Yu Mincho、楷体、仿宋、Microsoft YaHei 这些 Windows / macOS 自带字体，服务器上一般没有；这套替代字体是开放许可、可在此安装，不装也能出图、会降级到系统字体；原版字体有版权，不提供下载，需要时请自备授权文件在「概览」上传",
+            name_en="Diary Cards",
+            group="t2i",
         ),
     )
 }
@@ -608,6 +675,9 @@ class FontManager:
         self._task: asyncio.Task | None = None
         self._name_cache: dict[str, tuple[float, int, list[str]]] = {}
         self._preferred_source: str = ""
+        # fontconfig 当前可见的家族名缓存：判断「原版商业字体装没装」用，别每次请求都跑 fc-list
+        self._families_cache: set[str] = set()
+        self._families_at: float = 0.0
 
     # ------------------------------------------------------------ 目录与配置
 
@@ -633,8 +703,28 @@ class FontManager:
             '  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>\n'
             f"  <dir>{_xml_escape(str(self.fonts_dir))}</dir>\n"
             f"  <cachedir>{_xml_escape(str(cache_dir))}</cachedir>\n"
+            f"{self._alias_xml()}"
             "</fontconfig>\n"
         )
+
+    @staticmethod
+    def _alias_xml() -> str:
+        """原版字名 → 替代字体的 fontconfig 兜底规则（append 只在原版缺席时生效）。"""
+        blocks: list[str] = []
+        for origin, substitutes in FONT_ALIASES:
+            edited = "".join(
+                f'      <string>{_xml_escape(name)}</string>\n' for name in substitutes
+            )
+            blocks.append(
+                '  <match target="pattern">\n'
+                "    <!-- 模板写的原版商业字体：没装时退到下面这些已下载的开放字体 -->\n"
+                f"    <test qual=\"any\" name=\"family\"><string>{_xml_escape(origin)}</string></test>\n"
+                '    <edit name="family" mode="append" binding="same">\n'
+                f"{edited}"
+                "    </edit>\n"
+                "  </match>\n"
+            )
+        return "".join(blocks)
 
     def write_fontconfig(self) -> Path:
         """把字体配置写到字体目录下（原子写入）。"""
@@ -769,6 +859,65 @@ class FontManager:
 
     # ------------------------------------------------------------ 目录数据
 
+    def system_families(self, *, ttl_seconds: float = 30.0) -> set[str]:
+        """fontconfig 现在能看到的家族名（系统 + 插件目录）。
+
+        用来回答「模板要的 Yu Mincho / 仿宋 本机有没有」。没有 ``fc-list`` 时返回空集，
+        调用方会当成「都没有」，提示照常出现——宁可多问一句，也别漏提示。
+        """
+        now = time.monotonic()
+        if self._families_at and now - self._families_at < ttl_seconds:
+            return set(self._families_cache)
+        listing = shutil.which("fc-list")
+        families: set[str] = set()
+        if listing:
+            env = dict(os.environ)
+            config = self.config_path
+            if config.is_file():
+                env["FONTCONFIG_FILE"] = str(config)
+            try:
+                result = subprocess.run(
+                    [listing, ":", "family"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    env=env,
+                    check=False,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:  # pragma: no cover - 环境相关
+                logger.debug(f"[t2i] 读取系统字体家族失败：{exc}")
+            else:
+                for line in result.stdout.splitlines():
+                    for part in line.split(","):
+                        name = part.strip()
+                        if name:
+                            families.add(name)
+        self._families_cache = families
+        self._families_at = now
+        return set(families)
+
+    @staticmethod
+    def canonical_originals(names: list[str] | tuple[str, ...]) -> list[str]:
+        """把模板里写到的原版字体名归并成组名（去重、保持出现顺序）。"""
+        groups: list[str] = []
+        for name in names:
+            group = _ORIGINAL_TO_GROUP.get(str(name).casefold())
+            if group and group not in groups:
+                groups.append(group)
+        return groups
+
+    def missing_originals(self, names: list[str] | tuple[str, ...]) -> list[str]:
+        """这些原版商业字体里，本机还缺哪些（大小写不敏感）。
+
+        这些字体是 Windows / macOS 自带的：跑在 Windows 上又拿不到 fc-list 时直接当作
+        都有——否则会在本来就装好的机器上白弹一次提示。
+        """
+        wanted = self.canonical_originals(names)
+        available = {name.casefold() for name in self.system_families()}
+        if not available and os.name == "nt":
+            return []
+        return [name for name in wanted if name.casefold() not in available]
+
     def catalog(self) -> dict[str, object]:
         """给页面用的清单：字体家族 + 模板分组 + 已安装状态。"""
         installed = self.installed_by_family()
@@ -796,6 +945,7 @@ class FontManager:
                     "key": template.key,
                     "name": template.name,
                     "name_en": template.name_en or template.key,
+                    "group": template.group,
                     "note": template.note,
                     "families": list(template.families),
                     "family_names": [FONT_FAMILIES[key].name for key in template.families],

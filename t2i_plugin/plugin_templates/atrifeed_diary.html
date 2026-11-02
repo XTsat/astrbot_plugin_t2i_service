@@ -1,0 +1,796 @@
+<!doctype html>
+<!--
+  模板来源：astrbot_plugin_atrifeed（作者 Heximiao）
+  原文件：template/diary/diary.html
+  原文地址：https://github.com/Heximiao/astrbot_plugin_atrifeed/blob/main/template/diary/diary.html
+  许可：原项目为 AGPL-3.0，本文件是它的衍生版本，同样按 AGPL-3.0 使用与分发，
+        与插件其余部分（Apache-2.0）的许可相互独立。改编自本插件的适配，请勿移除本段声明。
+
+  改动只有「变量从哪来」与正文的 Markdown 渲染，样式、结构与文案保持原样：
+  * 正文：原模板吃 content，这里换成 AstrBot 提供的 text；上游那条链路喂的是纯文本，而消息正文
+    常带 Markdown（**粗体**、列表、引用），所以由同目录 assets/markdown.js 在出图时渲染成 HTML
+    （离线可用，不依赖 CDN）：字体、字号、行距与两端对齐都照原样，只多了块级元素的排版；
+  * 日期、星期、字数、字号：原来是插件预计算，这里由末尾那段脚本按渲染时刻与正文长度现算，
+    分档与上游 renderer.py 一致；
+  * 天气：上游来自聊天情绪分析，这里每次渲染从上游那五档里随机取一个；
+  * 心情卡：配图是上游写死的两张（好心情 pic/pictorial/my_atri1/emoji1.jpg、
+    坏心情 pic/emoji/tired/atri_tired1.jpg，阴/雨算坏心情），文案取上游 ATRI_ONE_LINERS 里的一句；
+  * 左右立绘：上游 pic/lihui/shop/atri6.png 与 pic/lihui/atri2.png；
+  * 心情图与立绘放在同目录的 assets/ 下，模板里按「assets 目录 + 文件名」引用，插件读模板时
+    再内联成 data URI（渲图用的是 file:// 临时文件，相对路径指不到插件目录）；
+  * 字体：每处 font-family 保留原版字体名在前，其后追加插件可下载的替代字体
+    （Noto Serif JP / Noto Sans JP / 霞鹜文楷），都没装则落回系统 CJK 字体。
+-->
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <meta name="author" content="Heximiao（astrbot_plugin_atrifeed，AGPL-3.0）">
+    <meta name="origin" content="版式源自 Heximiao / astrbot_plugin_atrifeed">
+    <meta name="origin-url" content="https://github.com/Heximiao/astrbot_plugin_atrifeed">
+    <!-- 本模板按 AGPL-3.0 单独授权 -->
+    <meta name="license" content="AGPL-3.0">
+    <meta
+        name="description"
+        content="ATRI 手记风模板（旧版）：亚托莉——高性能人形机器人，把今天的小事也一条条记进手记里。"
+    >
+    <title>今日の手記 · ATRI</title>
+    <style>
+        :root {
+            --sea-deep: #315f65;
+            --sea: #65aaa8;
+            --sea-pale: #cae3df;
+            --coral: #cf796a;
+            --sun: #e8c565;
+            --paper: #fffdf7;
+            --paper-warm: #f7f0e3;
+            --ink: #403933;
+            --ink-soft: #7e7167;
+            --rule: rgba(79, 143, 147, .19);
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            min-height: 100%;
+            margin: 0;
+        }
+
+        body {
+            min-width: 320px;
+            padding: 58px 24px 76px;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at 18% 16%, rgba(255,255,255,.72) 0 2px, transparent 3px),
+                radial-gradient(circle at 78% 70%, rgba(255,255,255,.48) 0 1px, transparent 2px),
+                linear-gradient(145deg, #b9d8d4 0%, #e2ebe4 46%, #d6cfc0 100%);
+            background-size: 42px 42px, 31px 31px, 100% 100%;
+            font-family: "Yu Gothic", "YuGothic", "Noto Sans JP", "Noto Sans CJK SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background:
+                linear-gradient(120deg, transparent 0 64%, rgba(49,95,101,.08) 64.2% 64.5%, transparent 64.7%),
+                linear-gradient(25deg, transparent 0 72%, rgba(255,255,255,.28) 72.2% 72.5%, transparent 72.7%);
+        }
+
+        .journal {
+            position: relative;
+            width: min(100%, 900px);
+            margin: 0 auto;
+            padding: 56px 62px 42px 86px;
+            isolation: isolate;
+            background:
+                linear-gradient(90deg, transparent 0 35px, rgba(207,121,106,.22) 36px 37px, transparent 38px),
+                var(--paper);
+            border: 1px solid rgba(64,57,51,.32);
+            border-radius: 4px 20px 12px 5px;
+            box-shadow:
+                0 1px 0 rgba(255,255,255,.8) inset,
+                12px 14px 0 rgba(49,95,101,.15),
+                24px 27px 0 rgba(207,121,106,.10),
+                0 34px 80px rgba(42,67,66,.24);
+        }
+
+        .journal::after {
+            content: "";
+            position: absolute;
+            z-index: -1;
+            inset: 13px;
+            border: 1px dashed rgba(64,57,51,.18);
+            border-radius: 3px 14px 9px 4px;
+            pointer-events: none;
+        }
+
+        .spine {
+            position: absolute;
+            inset: 50px auto 50px 24px;
+            width: 28px;
+            border-left: 2px solid rgba(64,57,51,.30);
+            background: repeating-linear-gradient(
+                to bottom,
+                transparent 0 8px,
+                rgba(49,95,101,.42) 8px 11px,
+                transparent 11px 25px
+            );
+        }
+
+        .spine::before,
+        .spine::after {
+            content: "";
+            position: absolute;
+            left: -8px;
+            width: 12px;
+            height: 12px;
+            border: 1px solid rgba(64,57,51,.25);
+            border-radius: 50%;
+            background: #e8e4da;
+            box-shadow: inset 1px 1px 2px rgba(64,57,51,.18);
+        }
+
+        .spine::before { top: 5%; }
+        .spine::after { bottom: 5%; }
+
+        .tape {
+            position: absolute;
+            z-index: 4;
+            top: -17px;
+            left: 53%;
+            width: 128px;
+            height: 36px;
+            transform: translateX(-50%) rotate(-1.8deg);
+            opacity: .84;
+            background: rgba(171,211,208,.9);
+            clip-path: polygon(3% 9%, 98% 0, 100% 87%, 5% 100%, 0 58%);
+            box-shadow: 0 5px 8px rgba(49,95,101,.08);
+        }
+
+        .masthead {
+            position: relative;
+            z-index: 2;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: end;
+            gap: 36px;
+            padding: 2px 4px 30px;
+            border-bottom: 1px solid rgba(64,57,51,.22);
+        }
+
+        .eyebrow {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0 0 8px;
+            color: var(--sea-deep);
+            font: 700 12px/1.2 Georgia, serif;
+            letter-spacing: .24em;
+        }
+
+        .eyebrow::before {
+            content: "";
+            width: 30px;
+            height: 2px;
+            background: var(--coral);
+        }
+
+        h1 {
+            margin: 0;
+            color: var(--sea-deep);
+            font-family: "Yu Mincho", "YuMincho", "Hiragino Mincho ProN", "MS Mincho", "Noto Serif JP", "Noto Serif CJK SC", "Noto Serif SC", serif;
+            font-size: clamp(42px, 6.2vw, 67px);
+            font-weight: 600;
+            line-height: 1.06;
+            letter-spacing: .12em;
+            text-shadow: 2px 2px 0 rgba(202,227,223,.8);
+        }
+
+        .subtitle {
+            margin: 8px 0 0 42px;
+            color: var(--ink-soft);
+            font: italic 13px/1.4 Georgia, serif;
+            letter-spacing: .27em;
+        }
+
+        .date-card {
+            position: relative;
+            min-width: 246px;
+            padding: 17px 20px 15px;
+            background: rgba(247,240,227,.88);
+            border: 1px solid rgba(64,57,51,.42);
+            box-shadow: 5px 6px 0 var(--sea-pale);
+            transform: rotate(1deg);
+        }
+
+        .date-card::before {
+            content: "記録済み";
+            position: absolute;
+            right: -13px;
+            top: -18px;
+            padding: 5px 9px;
+            color: var(--coral);
+            background: var(--paper);
+            border: 2px solid currentColor;
+            border-radius: 2px;
+            font: 700 11px/1 "Yu Gothic", sans-serif;
+            letter-spacing: .16em;
+            transform: rotate(5deg);
+        }
+
+        .date-label {
+            display: block;
+            margin-bottom: 5px;
+            color: var(--ink-soft);
+            font: 700 10px/1 Georgia, serif;
+            letter-spacing: .28em;
+        }
+
+        .date-main {
+            display: block;
+            font-family: "Yu Mincho", "YuMincho", "MS Mincho", "Noto Serif JP", "Noto Serif CJK SC", "Noto Serif SC", serif;
+            font-size: 23px;
+            font-weight: 700;
+            letter-spacing: .08em;
+        }
+
+        .date-sub {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            margin-top: 9px;
+            color: var(--ink-soft);
+            font-size: 12px;
+            letter-spacing: .12em;
+        }
+
+        .summary {
+            position: relative;
+            z-index: 3;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(120px, 1fr)) minmax(250px, 1.55fr);
+            gap: 14px;
+            align-items: stretch;
+            margin: 28px 4px 26px;
+        }
+
+        .summary-card {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: 82px;
+            padding: 14px 17px;
+            border: 1px solid rgba(64,57,51,.28);
+            background: rgba(255,255,255,.78);
+        }
+
+        .summary-card.weather {
+            background: #f9e8df;
+            transform: rotate(-.7deg);
+        }
+
+        .summary-card.count {
+            background: #e4f0ee;
+            transform: rotate(.8deg);
+        }
+
+        .summary-label {
+            color: var(--ink-soft);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .20em;
+        }
+
+        .summary-value {
+            margin-top: 5px;
+            font-family: "Yu Mincho", "YuMincho", "MS Mincho", "Noto Serif JP", "Noto Serif CJK SC", "Noto Serif SC", serif;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: .08em;
+            /* 「曇りのち晴れ」这类最长档不能顶出格子：允许在卡片内换行 */
+            overflow-wrap: anywhere;
+        }
+
+        .memory-card {
+            display: grid;
+            grid-template-columns: 78px 1fr;
+            gap: 14px;
+            align-items: center;
+            min-width: 0;
+            padding: 9px 13px;
+            background: #fff;
+            border: 1px solid rgba(64,57,51,.34);
+            box-shadow: 4px 5px 0 rgba(232,197,101,.55);
+            transform: rotate(-.45deg);
+        }
+
+        .memory-photo {
+            display: block;
+            width: 78px;
+            height: 65px;
+            object-fit: cover;
+            border: 1px solid rgba(64,57,51,.18);
+            filter: saturate(.86) contrast(.98);
+        }
+
+        .memory-kicker {
+            color: var(--coral);
+            font: 700 10px/1.2 Georgia, serif;
+            letter-spacing: .18em;
+        }
+
+        .memory-caption {
+            margin-top: 6px;
+            font-family: "Yu Mincho", "YuMincho", "MS Mincho", "Noto Serif JP", "Noto Serif CJK SC", "Noto Serif SC", serif;
+            font-size: 17px;
+            font-weight: 600;
+            line-height: 1.35;
+        }
+
+        .entry-paper {
+            position: relative;
+            z-index: 2;
+            min-height: 470px;
+            overflow: hidden;
+            padding: 32px 86px 68px;
+            background:
+                linear-gradient(90deg, transparent 0 45px, rgba(207,121,106,.25) 46px 47px, transparent 48px),
+                repeating-linear-gradient(to bottom, transparent 0 42px, var(--rule) 43px 44px),
+                #fffefa;
+            border: 1px solid rgba(64,57,51,.50);
+            border-radius: 3px 15px 7px 15px;
+            box-shadow: 7px 8px 0 rgba(101,170,168,.26), 0 16px 28px rgba(64,57,51,.10);
+            transform: rotate(-.15deg);
+        }
+
+        .entry-meta {
+            position: relative;
+            z-index: 3;
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            margin-bottom: 10px;
+            padding-bottom: 11px;
+            color: var(--ink-soft);
+            border-bottom: 1px dashed rgba(64,57,51,.22);
+            font: 700 10px/1.3 Georgia, serif;
+            letter-spacing: .18em;
+        }
+
+        .entry-art {
+            position: absolute;
+            z-index: 0;
+            bottom: -218px;
+            pointer-events: none;
+            user-select: none;
+            filter: saturate(.78) sepia(.08);
+        }
+
+        .entry-art img {
+            display: block;
+            height: 455px;
+            width: auto;
+        }
+
+        .entry-art-left {
+            left: -52px;
+            opacity: .12;
+            -webkit-mask-image: linear-gradient(90deg, #000 0 48%, rgba(0,0,0,.72) 68%, transparent 100%);
+            mask-image: linear-gradient(90deg, #000 0 48%, rgba(0,0,0,.72) 68%, transparent 100%);
+        }
+
+        .entry-art-right {
+            right: -44px;
+            bottom: -212px;
+            opacity: .105;
+            -webkit-mask-image: linear-gradient(270deg, #000 0 48%, rgba(0,0,0,.72) 68%, transparent 100%);
+            mask-image: linear-gradient(270deg, #000 0 48%, rgba(0,0,0,.72) 68%, transparent 100%);
+        }
+
+        .entry-art-right img { height: 420px; }
+
+        .entry-copy {
+            position: relative;
+            z-index: 2;
+            font-family: "Yu Mincho", "YuMincho", "STKaiti", "KaiTi", "Noto Serif JP", "LXGW WenKai", "Noto Serif CJK SC", "Noto Serif SC", serif;
+            font-size: 23px;
+            line-height: 44px;
+            letter-spacing: .065em;
+            overflow-wrap: anywhere;
+            text-align: justify;
+            text-justify: inter-ideograph;
+            text-shadow: 0 1px 0 rgba(255,255,255,.88);
+        }
+
+        .entry-copy p { margin: 0 0 .72em; }
+        .entry-copy p:last-child { margin-bottom: 0; }
+
+        /* 正文 Markdown 的块级排版：字号沿用正文，只补字重、缩进与边框，不另起一套配色 */
+        .entry-copy > :first-child { margin-top: 0; }
+        .entry-copy h1, .entry-copy h2, .entry-copy h3,
+        .entry-copy h4, .entry-copy h5, .entry-copy h6 {
+            margin: .62em 0 .44em;
+            font-weight: 700;
+            line-height: 1.45;
+            letter-spacing: .04em;
+            color: #45585c;
+        }
+        .entry-copy h1 { font-size: 1.28em; }
+        .entry-copy h2 { font-size: 1.16em; }
+        .entry-copy h3 { font-size: 1.06em; }
+        .entry-copy h4, .entry-copy h5, .entry-copy h6 { font-size: 1em; }
+        .entry-copy strong { font-weight: 700; color: #3d5054; }
+        .entry-copy em { font-style: italic; }
+        .entry-copy del { color: var(--ink-soft); }
+        .entry-copy ul, .entry-copy ol { margin: 0 0 .72em; padding-left: 1.45em; }
+        .entry-copy li { margin: .16em 0; }
+        .entry-copy li::marker { color: var(--coral); }
+        .entry-copy blockquote {
+            margin: 0 0 .72em;
+            padding: .06em 0 .06em .9em;
+            border-left: 3px solid var(--sea-pale);
+            color: var(--ink-soft);
+        }
+        .entry-copy a { color: var(--coral); text-decoration: underline; text-underline-offset: 2px; }
+        .entry-copy code {
+            padding: .06em .3em;
+            border-radius: 4px;
+            background: rgba(101, 170, 168, .14);
+            font-family: "JetBrains Mono", "LXGW WenKai Mono", ui-monospace, monospace;
+            font-size: .88em;
+            letter-spacing: 0;
+        }
+        .entry-copy pre {
+            margin: 0 0 .72em;
+            padding: .7em .9em;
+            border-radius: 8px;
+            background: rgba(101, 170, 168, .12);
+            overflow-x: auto;
+            white-space: pre;
+            line-height: 1.55;
+        }
+        .entry-copy pre code { padding: 0; background: none; font-size: .82em; }
+        .entry-copy hr {
+            margin: .85em 0;
+            border: 0;
+            border-top: 1px dashed rgba(79, 143, 147, .45);
+        }
+        .entry-copy table {
+            width: 100%;
+            margin: 0 0 .72em;
+            border-collapse: collapse;
+            font-size: .92em;
+        }
+        .entry-copy th, .entry-copy td {
+            padding: .3em .5em;
+            border-bottom: 1px solid rgba(79, 143, 147, .28);
+            text-align: left;
+        }
+        .entry-copy th { font-weight: 700; }
+
+
+        /* 天气图标是内联 SVG，跟着文字颜色走，不依赖字体里的符号 */
+        .wx {
+            width: 1.05em;
+            height: 1.05em;
+            margin-right: .32em;
+            vertical-align: -.14em;
+        }
+
+        .signature {
+            position: absolute;
+            z-index: 3;
+            right: 48px;
+            bottom: 27px;
+            color: var(--coral);
+            font: italic 21px/1 Georgia, serif;
+            letter-spacing: .14em;
+            transform: rotate(-4deg);
+        }
+
+        .whisper {
+            position: relative;
+            z-index: 4;
+            width: max-content;
+            max-width: 82%;
+            margin: -18px 0 0 -25px;
+            padding: 10px 20px 11px;
+            color: #5e4e35;
+            background: var(--sun);
+            border: 1px solid rgba(94,78,53,.26);
+            box-shadow: 3px 5px 0 rgba(94,78,53,.12);
+            font-family: "Yu Mincho", "YuMincho", "Noto Serif JP", "Noto Serif CJK SC", "Noto Serif SC", "Microsoft YaHei", serif;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: .09em;
+            transform: rotate(-2.4deg);
+        }
+
+        .whisper::after {
+            content: "";
+            position: absolute;
+            right: 10px;
+            bottom: -7px;
+            width: 18px;
+            height: 12px;
+            background: rgba(188,151,50,.62);
+            clip-path: polygon(0 0, 100% 0, 100% 100%);
+        }
+
+        .footer {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            margin: 30px 4px 0;
+            padding-top: 18px;
+            border-top: 1px solid rgba(64,57,51,.20);
+        }
+
+        .footer-quote {
+            margin: 0;
+            color: var(--ink-soft);
+            font-family: "Yu Mincho", "YuMincho", "MS Mincho", "Noto Serif JP", "Noto Serif CJK SC", "Noto Serif SC", serif;
+            font-size: 15px;
+            letter-spacing: .08em;
+        }
+
+        /* 页脚右侧只留渲染者的插件名：不加链接、不写「由 … 渲染」 */
+        .renderer-mark {
+            flex: 0 0 auto;
+            color: var(--sea-deep);
+            font: 700 12px/1.4 Georgia, serif;
+            letter-spacing: .025em;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 760px) {
+            body { padding: 26px 12px 45px; }
+
+            .journal {
+                padding: 42px 24px 34px 50px;
+                box-shadow: 8px 10px 0 rgba(49,95,101,.15), 15px 18px 0 rgba(207,121,106,.10);
+            }
+
+            .spine { left: 16px; }
+
+            .masthead {
+                grid-template-columns: 1fr;
+                align-items: start;
+                gap: 24px;
+            }
+
+            .subtitle { margin-left: 2px; }
+            .date-card { min-width: 0; width: min(100%, 310px); }
+
+            .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .memory-card { grid-column: 1 / -1; }
+
+            .entry-paper {
+                min-height: 440px;
+                padding: 28px 38px 72px;
+            }
+
+            .entry-copy { font-size: 18px; line-height: 2; }
+            .entry-art img { height: 350px; }
+            .entry-art-right img { height: 325px; }
+            .entry-art-left { left: -75px; opacity: .09; }
+            .entry-art-right { right: -65px; opacity: .08; }
+
+            .footer {
+                align-items: flex-start;
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .renderer-mark { overflow-wrap: anywhere; white-space: normal; }
+        }
+
+        @media (max-width: 430px) {
+            h1 { font-size: 38px; }
+            .summary { grid-template-columns: 1fr; }
+            .memory-card { grid-column: auto; }
+            .entry-paper { padding-inline: 27px; }
+            .entry-meta { flex-direction: column; gap: 5px; }
+            .whisper { margin-left: -10px; }
+        }
+        .wx-romaji {
+            margin-left: .38em;
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: .62em;
+            letter-spacing: .1em;
+            opacity: .68;
+            white-space: nowrap;
+        }
+
+        /* 日期卡那行小字塞不下「KUMORI NOCHI HARE」，罗马音只在摘要卡里显示 */
+        .date-sub .wx-romaji {
+            display: none;
+        }
+
+        /* 摘要卡里最长那档（曇りのち晴れ / KUMORI NOCHI HARE）要在格子内换行，不能顶出边框 */
+        .summary-value .wx-romaji {
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }
+    </style>
+</head>
+<body>
+    <main class="journal">
+        <div class="spine" aria-hidden="true"></div>
+        <div class="tape" aria-hidden="true"></div>
+
+        <header class="masthead">
+            <div>
+                <p class="eyebrow">ATRI MEMORY ARCHIVE</p>
+                <h1>今日の手記</h1>
+                <p class="subtitle">ATRI'S MEMORY LOG</p>
+            </div>
+
+            <section class="date-card" aria-label="日期与天气">
+                <span class="date-label">DATE</span>
+                <time class="date-main" id="diary-date"></time>
+                <div class="date-sub">
+                    <span id="diary-weekday"></span>
+                    <span id="diary-weather"></span>
+                </div>
+            </section>
+        </header>
+
+        <section class="summary" aria-label="今日日记摘要">
+            <div class="summary-card weather">
+                <span class="summary-label">今日の天気</span>
+                <strong class="summary-value" id="diary-weather-2"></strong>
+            </div>
+            <div class="summary-card count">
+                <span class="summary-label">書き留めた</span>
+                <strong class="summary-value"><span id="diary-chars"></span> 字</strong>
+            </div>
+            <div class="memory-card">
+                <img class="memory-photo" id="diary-mood" alt="" data-good="assets/mood-good.jpg" data-bad="assets/mood-bad.jpg">
+                <div>
+                    <div class="memory-kicker">TODAY'S MEMORY</div>
+                    <div class="memory-caption" id="diary-caption"></div>
+                </div>
+            </div>
+        </section>
+
+        <article class="entry-paper">
+            <div class="entry-art entry-art-left" aria-hidden="true">
+                <img id="diary-art-left" src="assets/art-left.webp" alt="">
+            </div>
+            <div class="entry-art entry-art-right" aria-hidden="true">
+                <img id="diary-art-right" src="assets/art-right.webp" alt="">
+            </div>
+
+            <div class="entry-meta">
+                <span>ATRI PERSONAL RECORD</span>
+                <span><span id="diary-chars-2"></span> CHARS</span>
+            </div>
+
+            <!-- 正文由文末脚本按 Markdown 渲染进来；原始消息放在页面末尾的隐藏节点里 -->
+            <div class="entry-copy" id="diary-body"></div>
+
+            <div class="signature">— ATRI</div>
+        </article>
+
+        <aside class="whisper">亚托莉的碎碎念</aside>
+
+        <footer class="footer">
+            <p class="footer-quote">地球に私も含まれますか？</p>
+            <span class="renderer-mark">astrbot_plugin_t2i_service</span>
+        </footer>
+    </main>
+
+  <!-- 原始正文：hidden 保证它不参与排版，脚本读 textContent（已转义过，取回来就是原文） -->
+  <div id="diary-source" hidden>{{ text | e }}</div>
+
+  <script src="assets/markdown.js"></script>
+  <script>
+    (function () {
+      var REFRESH_MINUTES = 15;   // 由插件按配置改写，见 templates.refresh_minutes
+      function set(id, text) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = text;
+      }
+
+      // 天气图标用内联 SVG：☀ ☂ 这类符号依赖字体覆盖，服务器上常常缺字，画出来不挑字体
+      function weatherIcon(kind) {
+        var icons = {
+          sun: '<circle cx="12" cy="12" r="4.6"/><path d="M12 2.4v2.6M12 19v2.6M2.4 12h2.6M19 12h2.6M4.9 4.9l1.9 1.9M17.2 17.2l1.9 1.9M19.1 4.9l-1.9 1.9M6.8 17.2l-1.9 1.9"/>',
+          cloud: '<path d="M6.5 18h11a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.6-1.2A3.9 3.9 0 0 0 6.5 18Z"/>',
+          suncloud: '<circle cx="9" cy="8.5" r="3.1"/><path d="M9 2.6v1.6M2.6 8.5h1.6M4.4 3.9l1.1 1.1M13.6 3.9l-1.1 1.1"/><path d="M8.2 19h8.6a3 3 0 0 0 .3-6 4.2 4.2 0 0 0-8.1-1A3.3 3.3 0 0 0 8.2 19Z"/>',
+          rain: '<path d="M6.5 15h11a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.6-1.2A3.9 3.9 0 0 0 6.5 15Z"/><path d="M9 18l-1 3M13 18l-1 3M17 18l-1 3"/>'
+        };
+        return '<svg class="wx" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+          'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          (icons[kind] || icons.cloud) + '</svg>';
+      }
+
+      function setWeather(id, weather) {
+        var el = document.getElementById(id);
+        if (el) {
+          el.innerHTML = weatherIcon(weather.icon) +
+            '<span>' + weather.display +
+            (weather.romaji ? '<small class="wx-romaji">' + weather.romaji + '</small>' : '') +
+            '</span>';
+        }
+      }
+
+      // 预览（面板里的模板图）每次都换一档天气；真实出图按天固定
+      var PREVIEW = "{{ preview | default('') }}" !== "";
+
+      var body = document.getElementById("diary-body");
+      // 正文按 Markdown 渲染；渲染器没加载出来时退回纯文本，至少内容还在
+      var source = document.getElementById("diary-source");
+      var plain = source ? source.textContent || "" : "";
+      if (body) {
+        body.textContent = plain;
+        if (window.t2iMarkdown) body.innerHTML = window.t2iMarkdown(plain);
+      }
+      var now = new Date();
+      var idx = (now.getDay() + 6) % 7;
+
+      // 日期 / 星期：与上游 renderer.py 一样的格式（星期日用中文，新版另给日文星期）
+      set("diary-date", now.getFullYear() + "年" + (now.getMonth() + 1) + "月" + now.getDate() + "日");
+      set("diary-weekday", ["月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日", "日曜日"][idx]);
+
+      // 天气：上游从当天消息的情绪分析里取，AstrBot 没有这份数据，随机取一档
+      var weathers = [
+        { word: "晴", icon: "sun", display: "晴れ", romaji: "HARE" },
+        { word: "多云", icon: "suncloud", display: "薄曇り", romaji: "USUGUMORI" },
+        { word: "阴", icon: "cloud", display: "曇り", romaji: "KUMORI" },
+        { word: "雨", icon: "rain", display: "雨", romaji: "AME" },
+        { word: "多云转晴", icon: "suncloud", display: "曇りのち晴れ", romaji: "KUMORI NOCHI HARE" }
+      ];
+      // 时间分桶：桶号每 REFRESH_MINUTES 分钟变一次，桶内天气 / 心情 / 台词都保持一致，
+      // 跨桶自动换新；面板的预览渲染带 preview 变量，预览仍每次随机，方便逐档看效果。
+      var bucket = Math.floor(now.getTime() / (REFRESH_MINUTES * 60000));
+      // 桶号散列成 32 位再取模（Math.imul 不丢精度），相邻时段不会只挪一位
+      var seed = Math.imul(bucket ^ 0x9e3779b9, 16777619) >>> 0;
+
+      var weather;
+      if (PREVIEW) {
+        weather = weathers[Math.floor(Math.random() * weathers.length)];
+      } else {
+        weather = weathers[seed % weathers.length];
+      }
+      setWeather("diary-weather", weather);
+      setWeather("diary-weather-2", weather);
+
+      // 心情：阴 / 雨 判为坏心情，配图与卡片阴影跟着换（同上游）
+      var bad = weather.word === "阴" || weather.word === "雨";
+      var moodImg = document.getElementById("diary-mood");
+      if (moodImg) {
+        // data-good / data-bad 在渲染前已由插件换成图片本身，这里只挑一个用
+        moodImg.src = bad ? moodImg.dataset.bad : moodImg.dataset.good;
+        moodImg.alt = bad ? "今日心情：有点低落" : "今日心情：还不错";
+      }
+      var moodCard = document.getElementById("diary-mood-card");
+      if (moodCard && bad) moodCard.classList.add("mood-bad");
+      var captions = [
+        "今日も高性能です！",
+        "大切な思い出を残しましょう！",
+        "今天的回忆也要好好保存。",
+        "海风正好，适合记录今天。",
+        "能源充足，状态良好！",
+        "普通的一天也值得珍藏。"
+      ];
+      set("diary-caption", PREVIEW
+        ? captions[Math.floor(Math.random() * captions.length)]
+        : captions[(seed >>> 7) % captions.length]);
+
+
+      // 字数与字号：上游 word_count 就是正文长度，font_size 按长度分档
+      var chars = (body.textContent || "").trim().length;
+      set("diary-chars", String(chars));
+      if (body) body.style.fontSize = (function (n) { return n <= 120 ? 26 : n <= 260 ? 23 : n <= 450 ? 21 : n <= 650 ? 19 : 17; })(chars) + "px";
+    })();
+  </script>
+</body>
+</html>

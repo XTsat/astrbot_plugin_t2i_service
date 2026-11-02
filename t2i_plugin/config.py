@@ -121,6 +121,14 @@ class FontsConfig:
 
 
 @dataclass
+class TemplatesConfig:
+    """转图模板配置（只作用于随插件发布的模板）。"""
+
+    # 模板里的天气 / 心情 / 台词按这个间隔换一批；太频繁会显得随机得没意义，太慢又像卡住
+    refresh_minutes: int = 15
+
+
+@dataclass
 class StorageConfig:
     image_lifetime_hours: int = 24
     cleanup_interval_minutes: int = 60
@@ -134,6 +142,7 @@ class T2IConfig:
     endpoint: EndpointConfig = field(default_factory=EndpointConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     fonts: FontsConfig = field(default_factory=FontsConfig)
+    templates: TemplatesConfig = field(default_factory=TemplatesConfig)
 
     @classmethod
     def from_raw(cls, raw: dict[str, Any] | None) -> "T2IConfig":
@@ -145,6 +154,7 @@ class T2IConfig:
         endpoint_raw = _section(raw, "endpoint")
         storage_raw = _section(raw, "storage")
         fonts_raw = _section(raw, "fonts")
+        templates_raw = _section(raw, "templates")
 
         server = ServerConfig(
             enabled=_as_bool(server_raw.get("enabled"), True),
@@ -211,6 +221,13 @@ class T2IConfig:
             ),
         )
 
+        templates = TemplatesConfig(
+            # 1 分钟是下限（再短就等于「每条消息都变」），上限一天：超过一天的间隔没意义
+            refresh_minutes=min(
+                1440, max(1, _as_int(templates_raw.get("refresh_minutes"), 15))
+            ),
+        )
+
         if server.port <= 0 or server.port > 65535:
             server.port = DEFAULT_PORT
 
@@ -221,6 +238,7 @@ class T2IConfig:
             endpoint=endpoint,
             storage=storage,
             fonts=fonts,
+            templates=templates,
         )
 
     def resolve_service_url(self) -> str:

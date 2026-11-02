@@ -57,6 +57,7 @@ class TemplateWebApi:
         preview_draft: Callable[[str], Awaitable[tuple[bool, str]]],
         apply: Callable[[str], Awaitable[dict[str, object]]],
         state: Callable[[], Awaitable[dict[str, object]]],
+        font_need: Callable[[str], dict[str, object]] | None = None,
     ) -> None:
         self.plugin_name = plugin_name
         self.gallery = gallery
@@ -64,6 +65,7 @@ class TemplateWebApi:
         self.preview_draft = preview_draft
         self.apply_template = apply
         self.state = state
+        self.font_need = font_need
         self.registered: list[str] = []
 
     # ------------------------------------------------------------ 注册
@@ -163,6 +165,9 @@ class TemplateWebApi:
     async def page_list(self) -> object:
         try:
             templates = await asyncio.to_thread(self.gallery.list_templates)
+            if self.font_need is not None:
+                for item in templates:
+                    item["fonts"] = self.font_need(str(item.get("name") or ""))
             slot = await self.state()
         except Exception as exc:  # noqa: BLE001 - 页面不该因为磁盘异常白屏
             logger.warning(f"[t2i] 读取模板清单失败：{exc}")

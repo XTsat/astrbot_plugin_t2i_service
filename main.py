@@ -73,10 +73,18 @@ from t2i_plugin.card import (  # noqa: E402
 )
 from t2i_plugin.config import DEFAULT_FALLBACK_ENDPOINT, T2IConfig  # noqa: E402
 from t2i_plugin.font_web import FontWebApi  # noqa: E402
-from t2i_plugin.fonts import FontManager  # noqa: E402
+from t2i_plugin.fonts import (  # noqa: E402
+    FONT_FAMILIES,
+    FONT_TEMPLATES,
+    FontManager,
+)
 from t2i_plugin.server import T2IHttpServer  # noqa: E402
 from t2i_plugin.template_web import TemplateWebApi  # noqa: E402
-from t2i_plugin.templates import SLOT_NAME, TemplateGallery  # noqa: E402
+from t2i_plugin.templates import (  # noqa: E402
+    FONT_PRESET_BY_TEMPLATE,
+    SLOT_NAME,
+    TemplateGallery,
+)
 
 # 历史上会写进用户配置的备用端点，官方已停用；值为空时视为「未自定义」
 LEGACY_FALLBACK_ENDPOINTS = {
@@ -171,7 +179,11 @@ class T2IServicePlugin(Star):
 
         # 模板供给：模板文件仍归 AstrBot 的模板目录管，插件只把选中的那套内容写进
         # 自己的槽位，并把 AstrBot 的「当前模板」指向槽位（详见 t2i_plugin/templates.py）。
-        self.templates = TemplateGallery(self.data_dir, plugin_version=_plugin_version())
+        self.templates = TemplateGallery(
+            self.data_dir,
+            plugin_version=_plugin_version(),
+            refresh_minutes=self.settings.templates.refresh_minutes,
+        )
         self.template_web = TemplateWebApi(
             PLUGIN_NAME,
             self.templates,
@@ -179,6 +191,7 @@ class T2IServicePlugin(Star):
             preview_draft=self._render_template_draft,
             apply=self._apply_t2i_template,
             state=self._template_slot_state,
+            font_need=self._template_font_need,
         )
         self.template_web.register(context)
 
@@ -528,7 +541,7 @@ class T2IServicePlugin(Star):
     async def _render_template_preview(self, name: str) -> tuple[bool, str]:
         """渲染一张模板预览图，返回（是否成功, 图片路径或错误信息）。"""
         try:
-            template = await asyncio.to_thread(self.templates.read, name)
+            template = await asyncio.to_thread(self.templates.render_text, name)
         except (OSError, ValueError, UnicodeDecodeError) as exc:
             return False, f"读取模板失败：{exc}"
         return await self.server.render_template_probe(
@@ -541,8 +554,9 @@ class T2IServicePlugin(Star):
         变量与正式预览、真实出图都用同一套样例数据，否则「看着没问题、发出去变形」
         会更难查。
         """
+        # 草稿里也可能写着 assets/xxx，渲染前同样要内联
         return await self.server.render_template_probe(
-            content, self.templates.sample_data()
+            self.templates.inline_assets(content), self.templates.sample_data()
         )
 
     async def _apply_t2i_template(self, name: str) -> dict[str, object]:
@@ -578,6 +592,42 @@ class T2IServicePlugin(Star):
             "endpoint": endpoint,
             "current": self._read_core_config("t2i_active_template"),
             "output_enabled": self._read_core_flag("t2i"),
+        }
+
+    def _template_font_need(self, name: str) -> dict[str, object]:
+        """模板想用的那套字体装没装，页面据此在应用前提示一句。
+
+        字体功能关掉时直接返回空：页面不该为一个用不上的功能弹窗。
+        """
+        preset = FONT_PRESET_BY_TEMPLATE.get(name, "")
+        if not preset or not self.settings.fonts.enabled:
+            return {}
+        template = FONT_TEMPLATES.get(preset)
+        if template is None:  # pragma: no cover - 预设写错时只是不提示
+            logger.debug(f"[t2i] 模板 {name} 指向的字体预设 {preset} 不存在")
+            return {}
+        installed = self.fonts.installed_by_family()
+        missing = [
+            key for key in template.families if not self.fonts.family_installed(key, installed)
+        ]
+        try:
+            declared = self.templates.describe(name).get("font_families") or []
+        except (OSError, ValueError, UnicodeDecodeError):
+            declared = []
+        originals = self.fonts.canonical_originals([str(item) for item in declared])
+        original_missing = self.fonts.missing_originals(originals)
+        return {
+            "preset": preset,
+            "label": template.name_en or template.name,
+            "families": list(template.families),
+            "family_names": [FONT_FAMILIES[key].name for key in template.families],
+            "missing": missing,
+            "missing_names": [FONT_FAMILIES[key].name for key in missing],
+            "approx_mb": round(sum(FONT_FAMILIES[key].approx_mb for key in missing), 1),
+            "original_names": originals,
+            "original_missing": original_missing,
+            # 原版装了、或者替代字体装了，都算够用，不再弹窗
+            "installed": not (original_missing and missing),
         }
 
     async def _template_slot_state(self) -> dict[str, object]:

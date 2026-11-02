@@ -5,8 +5,11 @@
 """
 
 import json
+import re
+from pathlib import Path
 
 import pytest
+from jinja2.sandbox import SandboxedEnvironment
 
 from t2i_plugin import template_web, templates
 from t2i_plugin.template_web import TemplateWebApi
@@ -60,6 +63,144 @@ def dirs(tmp_path, monkeypatch):
     return gallery, builtin, user, plugin
 
 
+# ---------------------------------------------------------------- 随包发布的模板
+
+SHIPPED_DIR = Path(templates.__file__).resolve().parent / templates.PLUGIN_TEMPLATE_SUBDIR
+
+
+def test_shipped_templates_only_use_variables_astrbot_provides():
+    """自带模板要能直接在 AstrBot 的文转图链路里渲出来。
+
+    AstrBot 只传 text 与 version，模板里写别的变量会被渲成空字符串——这正是把别的插件
+    的模板直接拷进来后「只剩空壳卡片」的原因，所以在这里卡住。
+    """
+    shipped = sorted(SHIPPED_DIR.glob("*.html"))
+    assert shipped, "插件自带模板目录里一个模板都没有"
+    env = SandboxedEnvironment()
+    for path in shipped:
+        text = path.read_text(encoding="utf-8")
+        used = set(re.findall(r"\{\{\s*([A-Za-z_]\w*)", text))
+        # preview 只由面板预览注入，真实渲染下 Jinja 会给空值，模板用 default('') 接住
+        assert used <= {"text", "version", "preview"}, (path.name, used)
+        # 渲染不报错，且正文确实进了页面
+        assert "正文内容" in env.from_string(text).render(
+            text="正文内容", version="v1.2.2"
+        )
+
+
+def test_shipped_templates_describe_themselves_for_the_panel():
+    """卡片标题与说明取自模板自己，缺了会退成文件名，面板上不好认。"""
+    for path in sorted(SHIPPED_DIR.glob("*.html")):
+        text = path.read_text(encoding="utf-8")
+        assert re.search(r"<title[^>]*>\s*\S", text), path.name
+        assert 'name="description"' in text, path.name
+
+
+def test_shipped_templates_inline_their_assets(tmp_path, monkeypatch):
+    """模板里写 assets/xxx，读出来必须是图片本身。
+
+    渲染跑的是 file:// 临时文件，相对路径指不到插件目录，所以这一步必须由插件完成；
+    模板本身保持小文件（图片在 assets/ 下当普通文件放着，换图不用动 HTML）。
+    """
+    monkeypatch.setattr(templates, "plugin_template_dir", lambda: SHIPPED_DIR)
+    monkeypatch.setattr(templates, "user_template_dir", lambda: tmp_path / "user")
+    gallery = TemplateGallery(tmp_path / "data")
+    for path in sorted(SHIPPED_DIR.glob("*.html")):
+        raw = path.read_text(encoding="utf-8")
+        assert "assets/mood-good.jpg" in raw, path.name
+        assert "base64" not in raw, path.name
+        assert path.stat().st_size < 64 * 1024, path.name
+        # 编辑器拿到的必须是原文（能改的引用），渲染才内联
+        assert "assets/mood-good.jpg" in gallery.read(path.stem), path.name
+        inlined = gallery.render_text(path.stem)
+        assert inlined.count("data:image/") >= 4, path.name
+        assert "assets/mood-good.jpg" not in inlined, path.name
+
+
+def test_shipped_templates_render_markdown_offline(tmp_path, monkeypatch):
+    """正文 Markdown 由模板自带的脚本渲染。
+
+    出图的 Chromium 常常没有外网，正文渲染不能指望 CDN；脚本必须和模板一起内联，
+    而且消息原文要落在隐藏节点里，脚本没跑起来时还能退回纯文本。
+    """
+    monkeypatch.setattr(templates, "plugin_template_dir", lambda: SHIPPED_DIR)
+    monkeypatch.setattr(templates, "user_template_dir", lambda: tmp_path / "user")
+    gallery = TemplateGallery(tmp_path / "data")
+    for path in sorted(SHIPPED_DIR.glob("*.html")):
+        raw = path.read_text(encoding="utf-8")
+        assert 'src="assets/markdown.js"' in raw, path.name
+        assert "window.t2iMarkdown" in raw, path.name
+        assert 'id="diary-source" hidden' in raw, path.name
+        assert "cdn." not in raw, path.name
+        inlined = gallery.render_text(path.stem)
+        assert "assets/markdown.js" not in inlined, path.name
+        assert "data:text/javascript;base64," in inlined, path.name
+
+
+def test_missing_asset_keeps_reference_without_breaking(tmp_path, monkeypatch):
+    """图片被删了也不该整块炸掉：引用原样留着，警告交给日志。"""
+    shipped = tmp_path / "shipped"
+    shipped.mkdir()
+    (shipped / "lonely.html").write_text(
+        '<html><body><img src="assets/nope.png"><textarea>{{ text }}</textarea></body></html>',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(templates, "plugin_template_dir", lambda: shipped)
+    monkeypatch.setattr(templates, "user_template_dir", lambda: tmp_path / "user")
+    gallery = TemplateGallery(tmp_path / "data")
+    assert "assets/nope.png" in gallery.read("lonely")
+    # 渲染路径也不该因为缺图就整块炸掉
+    assert "assets/nope.png" in gallery.render_text("lonely")
+
+
+def test_shipped_templates_report_credit_for_the_panel(tmp_path, monkeypatch):
+    """卡片上「模板变量」下面要能显示来源，所以 describe() 必须带 credit。"""
+    monkeypatch.setattr(templates, "plugin_template_dir", lambda: SHIPPED_DIR)
+    monkeypatch.setattr(templates, "user_template_dir", lambda: tmp_path / "user")
+    gallery = TemplateGallery(tmp_path / "data")
+    for path in sorted(SHIPPED_DIR.glob("*.html")):
+        item = gallery.describe(path.stem)
+        raw = path.read_text(encoding="utf-8")
+        # 卡片上只交代作者与仓库：许可在文件头与 NOTICE，渲染署名在出图页脚
+        assert "astrbot_plugin_atrifeed" in item["credit"], path.name
+        assert "AGPL" not in item["credit"], path.name
+        assert "渲染" not in item["credit"], path.name
+        # 出图页脚只留渲染者的插件名（不写「由 … 渲染」、不带作者链接）
+        assert 'class="renderer-mark">astrbot_plugin_t2i_service<' in raw, path.name
+
+
+def test_shipped_templates_keep_weather_stable_within_a_day():
+    """天气按天固定、预览每次随机：模板要认 preview，真实出图别用 Math.random。"""
+    for path in sorted(SHIPPED_DIR.glob("*.html")):
+        text = path.read_text(encoding="utf-8")
+        assert "preview | default" in text, path.name
+        assert "if (PREVIEW)" in text, path.name
+        # 预览分支里允许随机，真实出图那条必须走按时间分桶的种子
+        assert "var REFRESH_MINUTES = " in text, path.name
+        assert "REFRESH_MINUTES * 60000" in text, path.name
+        assert "Math.random() * weathers.length" in text, path.name
+        # 台词同样按桶走，不是每条消息都换
+        assert "captions[(seed >>> 7)" in text, path.name
+
+
+def test_refresh_minutes_are_baked_into_the_template(dirs, monkeypatch):
+    """刷新间隔靠读模板时写进 HTML：AstrBot 真实渲染不传 Jinja 变量。"""
+    gallery, *_ = dirs
+    monkeypatch.setattr(gallery, "refresh_minutes", 7)
+    baked = gallery.apply_refresh_minutes("var REFRESH_MINUTES = 15;")
+    assert baked == "var REFRESH_MINUTES = 7;"
+
+
+def test_shipped_templates_keep_their_upstream_attribution():
+    """AGPL-3.0 的衍生模板必须留着来源与许可声明，删掉就是许可问题。"""
+    for path in sorted(SHIPPED_DIR.glob("*.html")):
+        text = path.read_text(encoding="utf-8")
+        assert "astrbot_plugin_atrifeed" in text, path.name
+        assert "AGPL" in text, path.name
+        # 面板靠这条 meta 在模板卡片与「应用」弹窗上标出单独授权
+        assert '<meta name="license" content="AGPL-3.0">' in text, path.name
+
+
 # ---------------------------------------------------------------- 清单与解析
 
 
@@ -98,6 +239,39 @@ def test_describe_falls_back_to_name_without_title(dirs):
     assert item["description"] == ""
     assert item["source"] == "custom"
     assert item["shiki"] is False
+
+
+def test_describe_reads_credit_link(dirs):
+    """出处要能点：只认 http(s)，别把 javascript: 之类塞进面板。"""
+    gallery, builtin, _, _ = dirs
+    assert gallery.describe("base")["credit_url"] == ""
+    (builtin / "linked.html").write_text(
+        '<html><head><meta name="origin" content="版式源自 A">'
+        '<meta name="origin-url" content="https://example.com/a"></head>'
+        "<body>{{ text }}</body></html>",
+        encoding="utf-8",
+    )
+    item = gallery.describe("linked")
+    assert item["credit"] == "版式源自 A"
+    assert item["credit_url"] == "https://example.com/a"
+
+    (builtin / "evil.html").write_text(
+        '<html><head><meta name="origin-url" content="javascript:alert(1)"></head>'
+        "<body>{{ text }}</body></html>",
+        encoding="utf-8",
+    )
+    assert gallery.describe("evil")["credit_url"] == ""
+
+
+def test_describe_reads_per_template_license(dirs):
+    """借来的版式可能按别的许可证分发，面板要把它的许可证单独标出来。"""
+    gallery, builtin, _, _ = dirs
+    assert gallery.describe("base")["license"] == ""
+    (builtin / "gpl_style.html").write_text(
+        '<html><head><meta name="license" content="AGPL-3.0"></head><body>{{ text }}</body></html>',
+        encoding="utf-8",
+    )
+    assert gallery.describe("gpl_style")["license"] == "AGPL-3.0"
 
 
 def test_describe_marks_modified_user_copy(dirs):
@@ -151,8 +325,10 @@ def test_read_prefers_user_dir_and_rejects_bad_names(dirs):
 def test_sample_data_matches_astrbot_render_variables(dirs):
     gallery, *_ = dirs
     data = gallery.sample_data()
-    assert set(data) == {"text", "version"}
+    # text / version 是 AstrBot 真实渲染也给的；preview 只有面板预览才有
+    assert set(data) == {"text", "version", "preview"}
     assert data["version"] == "v1.2.1"
+    assert data["preview"]
     assert len(data["text"]) > 40
 
 
@@ -439,7 +615,7 @@ def _patch_envelope(monkeypatch) -> None:
 
 
 def _build_api(
-    gallery, *, preview=None, draft=None, applied=None, state=None
+    gallery, *, preview=None, draft=None, applied=None, state=None, font_need=None
 ) -> TemplateWebApi:
     async def default_preview(name: str) -> tuple[bool, str]:
         return False, "预览不可用"
@@ -460,6 +636,7 @@ def _build_api(
         preview_draft=draft or default_draft,
         apply=applied or default_apply,
         state=state or default_state,
+        font_need=font_need,
     )
 
 
@@ -507,6 +684,39 @@ async def test_web_list_returns_templates_and_slot(dirs, monkeypatch):
         "自建模板",
     }
     assert payload["slot"]["name"] == SLOT_NAME
+
+
+@pytest.mark.skipif(
+    not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
+)
+async def test_web_list_carries_font_requirement(dirs, monkeypatch):
+    """模板清单带上「这套模板想用什么字体」，页面才能在应用前弹下载提示。"""
+    gallery, *_ = dirs
+    _patch_envelope(monkeypatch)
+    need = {
+        "preset": "diary_card",
+        "family_names": ["Noto Serif JP"],
+        "missing": ["notoserifjp"],
+        "missing_names": ["Noto Serif JP"],
+        "approx_mb": 13.6,
+        "installed": False,
+    }
+    api = _build_api(gallery, state=lambda: _slot_state(), font_need=lambda name: need)
+    response = await api.page_list()
+    assert response["code"] == 0
+    items = response["data"]["templates"]
+    assert items and all(item["fonts"] == need for item in items)
+
+
+@pytest.mark.skipif(
+    not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
+)
+async def test_web_list_without_font_callback_has_no_fonts_key(dirs, monkeypatch):
+    gallery, *_ = dirs
+    _patch_envelope(monkeypatch)
+    api = _build_api(gallery, state=lambda: _slot_state())
+    response = await api.page_list()
+    assert all("fonts" not in item for item in response["data"]["templates"])
 
 
 @pytest.mark.skipif(

@@ -970,6 +970,19 @@ button.pick[aria-pressed="true"] {
   min-width: 0;
 }
 
+.t2i-info a {
+  color: inherit;
+  text-decoration-color: currentColor;
+  text-underline-offset: 3px;
+}
+
+.t2i-license {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .t2i-name {
   display: flex;
   align-items: center;

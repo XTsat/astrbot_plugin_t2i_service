@@ -117,6 +117,11 @@
           "title": "Single font family",
           "onlyMissing": "Only show missing",
           "hint": "The list comes from the upstream project's <code>T2I_FONTS.md</code>; an installed family shows <strong>Delete</strong> instead of <strong>Download</strong>."
+        },
+        "tabT2i": "T2i templates",
+        "t2i": {
+          "title": "T2i template fonts",
+          "desc": "These are the fonts used by the T2i templates bundled with this plugin. Install a whole set or a single family (under Overview → Single font family); after installing, hit \"Re-render\" on the T2i templates tab to see the new glyphs."
         }
       },
       "template": {
@@ -225,7 +230,23 @@
           "saveFailed": "Saving the sample text failed — check the log for details",
           "saved": "Sample text saved; template cards are re-rendering with it",
           "resetDone": "Sample text restored to the default"
-        }
+        },
+        "fontDialog": {
+          "title": "This template can also use the original fonts",
+          "body": "\"{name}\" was designed for {originals} (bundled with Windows / macOS, usually absent on a server); the substitutes {missing} are not installed either (about {mb} MB). Installing them brings the glyphs closer to the original.",
+          "consequence": "Rendering works either way: without the fonts the template falls back to the server's own Chinese fonts, so Japanese Mincho and Kai shapes are lost and headings and body text look different from the original template.",
+          "whereBefore": "To install them later, open",
+          "whereLink": "Upstream project → T2i templates",
+          "whereAfter": ".",
+          "skip": "Ignore and apply",
+          "download": "Download fonts and apply",
+          "started": "Font download started — re-render the preview once it finishes to see the new glyphs",
+          "bodyPlain": "\"{name}\" uses {list}; still missing {missing} (about {mb} MB). Installing them brings the glyphs closer to the original template.",
+          "etc": " and more"
+        },
+        "credit": "{credit}",
+        "license": "Licensed separately",
+        "licenseHint": "This template is licensed under {license}"
       },
       "toast": {
         "busy": "Another job is already running, please wait",
@@ -253,6 +274,10 @@
       "error": {
         "generic": "Request failed, see the AstrBot log",
         "noBridge": "The AstrBot plugin page bridge was not found. Open this page from the plugin page in the WebUI."
+      },
+      "link": {
+        "copied": "Link copied — you can open it in a new tab",
+        "copyFailed": "Copy failed; please copy this address manually: {url}"
       }
     }
   }

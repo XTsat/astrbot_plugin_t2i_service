@@ -140,6 +140,60 @@ def test_catalog_matches_known_templates():
     assert upstream["doc"].endswith("docs/T2I_FONTS.md")
 
 
+def test_catalog_marks_template_groups():
+    """t2i 组的模板要能单独挑出来，页面才能给它开一个「T2i 模板」栏位。"""
+    manager = FontManager(_tmp(None), github_proxy="")
+    groups = {tpl["key"]: tpl["group"] for tpl in manager.catalog()["templates"]}
+    assert groups.get("diary_card") == "t2i"
+    assert groups.get("simple") == "upstream"
+    assert all(group in {"upstream", "t2i"} for group in groups.values())
+
+
+def test_fontconfig_maps_original_commercial_names():
+    """模板里写的 Yu Mincho / 楷体这类商业字名，没装时要能落到已下载的开放字体。"""
+    manager = FontManager(_tmp(None), github_proxy="")
+    config = manager.render_fontconfig()
+    assert "/etc/fonts/fonts.conf" in config  # 不能把系统字体挡掉
+    for original, substitute in (
+        ("Yu Mincho", "Noto Serif JP"),
+        ("Yu Gothic", "Noto Sans JP"),
+        ("KaiTi", "LXGW WenKai"),
+        ("Microsoft YaHei", "Noto Sans SC"),
+    ):
+        assert f"<string>{original}</string>" in config, original
+        block_start = config.index(f"<string>{original}</string>")
+        assert substitute in config[block_start : block_start + 400], (original, substitute)
+
+
+def test_missing_originals_reads_fontconfig_listing(monkeypatch):
+    """原版商业字体装没装，靠 fc-list 的家族清单判断（拿不到清单时一律当缺）。"""
+    import subprocess
+
+    manager = FontManager(_tmp(None), github_proxy="")
+
+    class _Result:
+        stdout = "Yu Mincho,游明朝\nNoto Sans CJK SC\n"
+
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/fc-list")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Result())
+    assert manager.missing_originals(["Yu Mincho", "KaiTi"]) == ["KaiTi"]
+
+    # 没有 fc-list（精简镜像常见）时全部算缺，提示照常出现
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    manager._families_at = 0.0  # 跳过 30 秒缓存，模拟换了一次环境
+    assert manager.missing_originals(["Yu Mincho"]) == ["Yu Mincho"]
+
+
+def test_diary_preset_skips_the_mono_file():
+    """霞鹜文楷等宽版只有代码块用得上，日记模板那套不该把它算进体积。"""
+    manager = FontManager(_tmp(None), github_proxy="")
+    templates = {tpl["key"]: tpl for tpl in manager.catalog()["templates"]}
+    assert "lxgwwenkaimono" not in templates["diary_card"]["families"]
+    assert "lxgwwenkaimono" in templates["ATRI"]["families"]
+    # 拆开之后，日记那套应比整套霞鹜文楷便宜
+    assert templates["diary_card"]["approx_mb"] < templates["ATRI"]["approx_mb"] + 13.6
+
+
 def test_unknown_family_and_template_are_rejected(tmp_path):
     manager = FontManager(tmp_path / "fonts")
     with pytest.raises(ValueError):

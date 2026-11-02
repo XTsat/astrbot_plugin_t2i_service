@@ -33,6 +33,14 @@ const els = {
   specimenBox: $("specimen-box"),
   specimenImg: $("specimen-img"),
   templates: $("templates"),
+  templatesT2i: $("templates-t2i"),
+  t2iFontDialog: $("t2i-font-dialog"),
+  t2iFontDialogText: $("t2i-font-dialog-text"),
+  t2iFontDialogLicense: $("t2i-font-dialog-license"),
+  t2iFontDialogDownload: $("t2i-font-dialog-download"),
+  t2iFontDialogSkip: $("t2i-font-dialog-skip"),
+  t2iFontDialogGoto: $("t2i-font-dialog-goto"),
+  t2iFontsPanel: $("panel-t2i-fonts"),
   families: $("families"),
   onlyMissing: $("only-missing"),
   toast: $("toast"),
@@ -95,6 +103,8 @@ const state = {
   // 预览样例文本的本地编辑态：用户改了还没保存时，别被后台刷新覆盖
   t2iSample: null,
   t2iSampleDirty: false,
+  // 等字体弹窗做决定的那次「应用」：{ name, button, fonts }
+  pendingApply: null,
   jobSig: "",
 };
 
@@ -191,6 +201,57 @@ function applyLocalThemeFallback() {
 // ---------------------------------------------------------------- 基础工具
 
 let toastTimer = 0;
+
+/** 复制一段文本；沙箱 iframe 里 clipboard API 常被拒，退回 execCommand。 */
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (error) {
+    // 沙箱里没有剪贴板权限，继续走下面的兜底
+  }
+  try {
+    const box = document.createElement("textarea");
+    box.value = text;
+    box.setAttribute("readonly", "");
+    box.style.position = "fixed";
+    box.style.top = "-1000px";
+    box.style.opacity = "0";
+    document.body.appendChild(box);
+    box.select();
+    const ok = document.execCommand("copy");
+    box.remove();
+    return ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+/** 打开外部链接。
+ *
+ * Dashboard 用 `sandbox="allow-scripts allow-forms allow-downloads"` 的 iframe 装本页，
+ * 没有 allow-popups，所以 `target="_blank"` 左键点了没反应（中键是浏览器自己开的，正常）。
+ * 这里先试 window.open，被拦就把地址复制到剪贴板并提示，粘到浏览器即可。
+ */
+async function openExternal(url) {
+  if (!url) return;
+  let opened = null;
+  try {
+    opened = window.open(url, "_blank", "noopener,noreferrer");
+  } catch (error) {
+    opened = null;
+  }
+  if (opened) return;
+  const copied = await copyText(url);
+  toast(
+    copied
+      ? t("link.copied", "链接已复制，可以用新标签页打开")
+      : t("link.copyFailed", "复制失败，请手动复制这个地址：{url}", { url }),
+    copied ? "ok" : "err",
+  );
+}
 
 function toast(message, kind = "") {
   els.toast.textContent = message;
@@ -415,27 +476,56 @@ async function load() {
   }
 }
 
-/** 对接项目的二级栏位：一个上游项目一格，标签直接用项目名，避免顶层栏名随项目变长。 */
+/**
+ * 二级栏位：一栏是上游项目（标签直接用项目名，避免顶层栏名随项目变长），
+ * 另一栏是本插件自带 T2i 模板的字体——两者都只是「按模板一键装字体」，放一起更好找。
+ */
 function renderProjectTabs(upstream) {
   const container = els.upstreamTabs;
   if (!container) return;
   const project = upstream && upstream.project ? upstream.project : "";
-  if (!project) {
-    // 没有上游项目数据时整块收起，不显示一个点不动的空栏位
-    container.innerHTML = "";
-    if (els.projectPanel) els.projectPanel.hidden = true;
-    return;
+  const projectLabel = shortProjectName(project) || project;
+  const entries = [];
+  if (project) {
+    entries.push({ id: "project", label: projectLabel, panel: els.projectPanel });
   }
-  container.innerHTML = `<button
+  entries.push({
+    id: "t2i-fonts",
+    label: t("upstream.tabT2i", "T2i 模板"),
+    panel: els.t2iFontsPanel,
+  });
+  container.innerHTML = entries
+    .map(
+      (entry, index) => `<button
     class="subtab"
-    id="subtab-project"
+    id="subtab-${entry.id}"
     type="button"
     role="tab"
-    aria-controls="panel-project"
-    aria-selected="true"
-    tabindex="0"
-  >${escapeHtml(shortProjectName(project) || project)}</button>`;
-  if (els.projectPanel) els.projectPanel.hidden = false;
+    aria-controls="panel-${entry.id}"
+    aria-selected="${index === 0 ? "true" : "false"}"
+    tabindex="${index === 0 ? "0" : "-1"}"
+  >${escapeHtml(entry.label)}</button>`,
+    )
+    .join("");
+  for (const button of container.querySelectorAll(".subtab")) {
+    button.addEventListener("click", () => activateSubtab(button.id.replace("subtab-", "")));
+  }
+  activateSubtab(entries[0].id);
+}
+
+/** 二级栏位切换：面板与按钮按 subtab-<id> / panel-<id> 配对，加栏位只改上面那份 entries。 */
+function activateSubtab(name) {
+  const container = els.upstreamTabs;
+  if (!container) return;
+  const panels = { project: els.projectPanel, "t2i-fonts": els.t2iFontsPanel };
+  for (const button of container.querySelectorAll(".subtab")) {
+    const id = button.id.replace("subtab-", "");
+    const active = id === name;
+    button.setAttribute("aria-selected", active ? "true" : "false");
+    button.tabIndex = active ? 0 : -1;
+    const panel = panels[id];
+    if (panel) panel.hidden = !active;
+  }
 }
 
 function renderAll() {
@@ -456,7 +546,15 @@ function renderAll() {
   renderStats(status);
   renderInstalled(state.data.installed);
   renderSpecimenPicker();
-  renderTemplates(state.data.catalog.templates);
+  const catalogTemplates = state.data.catalog.templates || [];
+  renderTemplates(
+    els.templates,
+    catalogTemplates.filter((tpl) => (tpl.group || "upstream") !== "t2i"),
+  );
+  renderTemplates(
+    els.templatesT2i,
+    catalogTemplates.filter((tpl) => (tpl.group || "upstream") === "t2i"),
+  );
   renderFamilies(state.data.catalog.families, status);
   renderJob(state.job);
 }
@@ -754,7 +852,8 @@ function templateTitle(tpl) {
   return `${title}<span class="sub">${escapeHtml(tpl.name)}</span>`;
 }
 
-function renderTemplates(templates) {
+function renderTemplates(grid, templates) {
+  if (!grid) return;
   const tiles = (templates || []).map((tpl) => {
     const missing = tpl.missing || [];
     // 装齐了同样要把用到的家族名列出来，否则只剩「全部 N 个家族」看不出装了什么
@@ -807,7 +906,7 @@ function renderTemplates(templates) {
     </div>`;
   });
 
-  els.templates.innerHTML = tiles.join("");
+  grid.innerHTML = tiles.join("");
 }
 
 function renderFamilies(families, status) {
@@ -885,7 +984,18 @@ function syncTileProgress() {
   if (signature !== state.jobSig) {
     state.jobSig = signature;
     if (state.data) {
-      renderTemplates(state.data.catalog.templates);
+      renderTemplates(
+        els.templates,
+        (state.data.catalog.templates || []).filter(
+          (tpl) => (tpl.group || "upstream") !== "t2i",
+        ),
+      );
+      renderTemplates(
+        els.templatesT2i,
+        (state.data.catalog.templates || []).filter(
+          (tpl) => (tpl.group || "upstream") === "t2i",
+        ),
+      );
       renderFamilies(state.data.catalog.families, state.data.status);
     }
   }
@@ -1379,6 +1489,30 @@ function renderT2iCard(item, slot) {
                 )}</div>`
               : ""
           }
+          ${
+            item.credit
+              ? `<div class="muted small">${
+                  item.credit_url
+                    ? `<a href="${escapeHtml(item.credit_url)}" target="_blank" rel="noreferrer">${escapeHtml(
+                        t("t2i.credit", "{credit}", { credit: item.credit }),
+                      )}</a>`
+                    : escapeHtml(t("t2i.credit", "{credit}", { credit: item.credit }))
+                }</div>`
+              : ""
+          }
+          ${
+            item.license
+              ? `<div class="t2i-license"><span class="chip warn" title="${escapeHtml(
+                  t(
+                    "t2i.licenseHint",
+                    "这个模板按 {license} 单独授权",
+                    { license: item.license },
+                  ),
+                )}">${escapeHtml(item.license)}</span><span class="muted small">${escapeHtml(
+                  t("t2i.license", "该模板单独授权"),
+                )}</span></div>`
+              : ""
+          }
         </div>
         <div class="t2i-actions">${actions.join("")}</div>
       </div>
@@ -1528,7 +1662,126 @@ async function resetT2iSample() {
   toast(t("t2i.sample.resetDone", "已恢复默认样例文本"), "ok");
 }
 
-async function applyT2iTemplate(name, button) {
+/** 这套模板想用的字体还缺不缺；字体功能关掉或模板没指定预设时返回 null。 */
+function t2iFontGap(name) {
+  const templates = (state.t2i && state.t2i.templates) || [];
+  const item = templates.find((tpl) => tpl.name === name);
+  const fonts = item && item.fonts ? item.fonts : null;
+  if (!fonts || !fonts.preset || fonts.installed) return null;
+  return fonts;
+}
+
+/** 应用前问一句：要不要顺手把字体装上，还是就这么降级出图。 */
+function openT2iFontDialog(name, button, fonts) {
+  state.pendingApply = { name, button, fonts };
+  // 借来的版式可能按另一个许可证分发（比如 AGPL-3.0），应用前先在这里说清楚
+  const licensed = (state.t2i && state.t2i.templates ? state.t2i.templates : []).find(
+    (item) => item.name === name && item.license,
+  );
+  if (els.t2iFontDialogLicense) {
+    els.t2iFontDialogLicense.hidden = !licensed;
+    if (licensed) {
+      els.t2iFontDialogLicense.textContent = t(
+        "t2i.licenseHint",
+        "这个模板按 {license} 单独授权",
+        { license: licensed.license },
+      );
+    }
+  }
+  if (els.t2iFontDialogText) {
+    const originalList = fonts.original_names || [];
+    const joined = originalList.slice(0, 4).join(t("list.separator", "、"));
+    const originals = originalList.length > 4
+      ? joined + t("t2i.fontDialog.etc", " 等")
+      : joined;
+    const missing = (fonts.missing_names || []).join(t("list.separator", "、"));
+    els.t2iFontDialogText.textContent = originals
+      ? t(
+          "t2i.fontDialog.body",
+          "「{name}」原本用的是 {originals}（Windows / macOS 自带，服务器上一般没有）；本机也没装可替代的 {missing}（约 {mb} MB）。装上替代字体后，字形会更接近原作。",
+          {
+            name: t2iLabel({ name }),
+            originals,
+            missing,
+            mb: fonts.approx_mb || 0,
+          },
+        )
+      : t(
+          "t2i.fontDialog.bodyPlain",
+          "「{name}」用到 {list}，其中还缺 {missing}（约 {mb} MB）。现在装上的话，出图会更接近模板原作者的字形。",
+          {
+            name: t2iLabel({ name }),
+            list: (fonts.family_names || []).join(t("list.separator", "、")),
+            missing,
+            mb: fonts.approx_mb || 0,
+          },
+        );
+  }
+  if (els.t2iFontDialogDownload) els.t2iFontDialogDownload.disabled = false;
+  if (els.t2iFontDialogSkip) els.t2iFontDialogSkip.disabled = false;
+  if (els.t2iFontDialog && typeof els.t2iFontDialog.showModal === "function") {
+    els.t2iFontDialog.showModal();
+  } else if (els.t2iFontDialog) {
+    els.t2iFontDialog.setAttribute("open", "");
+  }
+}
+
+function closeT2iFontDialog() {
+  if (els.t2iFontDialog && typeof els.t2iFontDialog.close === "function") {
+    els.t2iFontDialog.close();
+  } else if (els.t2iFontDialog) {
+    els.t2iFontDialog.removeAttribute("open");
+  }
+}
+
+function bindT2iFontDialog() {
+  if (els.t2iFontDialogSkip) {
+    els.t2iFontDialogSkip.addEventListener("click", async () => {
+      const pending = state.pendingApply;
+      closeT2iFontDialog();
+      state.pendingApply = null;
+      if (!pending) return;
+      await applyT2iTemplate(pending.name, pending.button, { skipFontPrompt: true });
+    });
+  }
+  if (els.t2iFontDialogDownload) {
+    els.t2iFontDialogDownload.addEventListener("click", async () => {
+      const pending = state.pendingApply;
+      if (!pending) return;
+      els.t2iFontDialogDownload.disabled = true;
+      els.t2iFontDialogSkip.disabled = true;
+      // 先把字体任务发出去，再把模板应用掉：下载在后台跑，字形下次渲染生效，
+      // 模板本身不依赖字体就已经能出图
+      await startJob(
+        "fonts/download",
+        { keys: pending.fonts.families || [] },
+        t("t2i.fontDialog.started", "已开始下载字体，下完重新渲染预览就能看到新字形"),
+        { keys: pending.fonts.families || [], template: pending.fonts.preset },
+      );
+      closeT2iFontDialog();
+      state.pendingApply = null;
+      await applyT2iTemplate(pending.name, pending.button, { skipFontPrompt: true });
+    });
+  }
+  if (els.t2iFontDialogGoto) {
+    els.t2iFontDialogGoto.addEventListener("click", () => {
+      closeT2iFontDialog();
+      state.pendingApply = null;
+      activateTab("upstream");
+      activateSubtab("t2i-fonts");
+    });
+  }
+}
+
+async function applyT2iTemplate(name, button, options) {
+  const opts = options || {};
+  if (!opts.skipFontPrompt) {
+    const fonts = t2iFontGap(name);
+    if (fonts) {
+      openT2iFontDialog(name, button, fonts);
+      return;
+    }
+  }
   if (button) button.disabled = true;
   const data = await apiPost("templates/apply", { name });
   if (button) button.disabled = false;
@@ -1926,6 +2179,18 @@ function bindT2i() {
 
 // ---------------------------------------------------------------- 启动
 
+/** 页面里的外链统一走 openExternal：左键点了不会静默失效。 */
+function bindExternalLinks() {
+  document.addEventListener("click", (event) => {
+    if (event.defaultPrevented || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = event.target.closest('a[href^="http"]');
+    if (!link) return;
+    event.preventDefault();
+    openExternal(link.href);
+  });
+}
+
 async function boot() {
   const api = await waitForBridge();
   if (!api) {
@@ -1947,6 +2212,8 @@ async function boot() {
   bindGrids();
   bindActions();
   bindT2i();
+  bindT2iFontDialog();
+  bindExternalLinks();
   await load();
   const current = state.data && state.data.status && state.data.status.job;
   if (current && current.status === "running") {

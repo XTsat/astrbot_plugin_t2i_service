@@ -117,6 +117,11 @@
           "title": "单个字体家族",
           "onlyMissing": "只看未安装",
           "hint": "清单来自对接项目的 <code>T2I_FONTS.md</code>；装好的家族按钮会变成「删除」。"
+        },
+        "tabT2i": "T2i 模板",
+        "t2i": {
+          "title": "T2i 模板字体",
+          "desc": "这里列的是本插件自带 T2i 模板用到的字体。可以整套装，也可以只装某个家族（在「概览 → 单个字体家族」里）；装完回到「T2i 模板」栏点一次「重新渲染」就能看到新字形。"
         }
       },
       "template": {
@@ -225,7 +230,23 @@
           "saveFailed": "保存样例文本失败，看日志里的详细报错",
           "saved": "已保存样例文本，模板卡片正在按新文字重渲",
           "resetDone": "已恢复默认样例文本"
-        }
+        },
+        "fontDialog": {
+          "title": "这套模板还能用上原作者的字体",
+          "body": "「{name}」原本用的是 {originals}（Windows / macOS 自带，服务器上一般没有）；本机也没装可替代的 {missing}（约 {mb} MB）。装上替代字体后，字形会更接近原作。",
+          "consequence": "不装也能出图：模板会自动降级到服务器自带的中文字体，日文明朝体、楷体这类字形还原不出来，标题与正文看起来会和模板原作不一样。",
+          "whereBefore": "想稍后再装，去",
+          "whereLink": "对接项目 → T2i 模板",
+          "whereAfter": "那一栏。",
+          "skip": "忽略，直接应用",
+          "download": "下载字体并应用",
+          "started": "已开始下载字体，下完重新渲染预览就能看到新字形",
+          "bodyPlain": "「{name}」用到 {list}，其中还缺 {missing}（约 {mb} MB）。现在装上的话，出图会更接近模板原作者的字形。",
+          "etc": " 等"
+        },
+        "credit": "{credit}",
+        "license": "该模板单独授权",
+        "licenseHint": "这个模板按 {license} 单独授权"
       },
       "toast": {
         "busy": "已有任务在进行中，请等待完成",
@@ -253,6 +274,10 @@
       "error": {
         "generic": "请求失败，请查看 AstrBot 日志",
         "noBridge": "没有检测到 AstrBot 插件页面桥，请从 WebUI 的插件页面打开本页。"
+      },
+      "link": {
+        "copied": "链接已复制，可以用新标签页打开",
+        "copyFailed": "复制失败，请手动复制这个地址：{url}"
       }
     }
   }

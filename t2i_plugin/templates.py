@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
@@ -30,8 +31,30 @@ except Exception:  # noqa: BLE001
 
 # 本插件在 AstrBot 模板清单里占用的槽位名（文件名即 <名字>.html）
 SLOT_NAME = "t2i_service_plugin"
+# 模板 → 它想用的字体预设（键在 t2i_plugin/fonts.py 的 FONT_TEMPLATES 里）：
+# 面板应用模板时会先看这套字体装没装，没装就提示可以顺手装一下
+FONT_PRESET_BY_TEMPLATE = {
+    "atrifeed_diary": "diary_card",
+    "atrifeed_diary_legacy": "diary_card",
+}
 # 随插件发布的模板目录：插件目录下的子目录，用户不加自己的模板也有几套可选
 PLUGIN_TEMPLATE_SUBDIR = "plugin_templates"
+# 模板里按 assets/xxx 引用同目录 assets/ 下的资源（图片、随模板走的脚本），读模板时内联成
+# data URI：渲染跑的是 file:// 临时文件，相对路径指不到插件目录，资源只能跟着 HTML 走
+_ASSET_REF_RE = re.compile(r"assets/([A-Za-z0-9._-]+)")
+# 插件自带模板里的「数据刷新间隔」标记：读模板时换成配置里的分钟数
+_REFRESH_RE = re.compile(r"var REFRESH_MINUTES = \d+;")
+_ASSET_MIME = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    # 正文 Markdown 渲染器随模板走（服务器上通常没有外网，CDN 取不到就静默失败）；
+    # 声明成 text/javascript，浏览器才肯执行 data URI 里的脚本
+    ".js": "text/javascript",
+}
 # 预览图按内容哈希命名，模板一改就换名字；只留最近这么多张，避免越积越多
 PREVIEW_KEEP = 24
 
@@ -208,6 +231,21 @@ _DESC_RE = re.compile(
     r"""<meta[^>]+name=["']description["'][^>]*content=["'](.*?)["']""", re.S | re.I
 )
 _VAR_RE = re.compile(r"\{\{\s*([A-Za-z_]\w*)")
+_ORIGIN_RE = re.compile(
+    r"""<meta[^>]+name=["']origin["'][^>]*content=["'](.*?)["']""", re.S | re.I
+)
+# 出处链接：面板把那行出处渲染成可点的链接，而不是纯文字
+_ORIGIN_URL_RE = re.compile(
+    r"""<meta[^>]+name=["']origin-url["'][^>]*content=["'](.*?)["']""", re.S | re.I
+)
+# 单个模板可能带自己的许可证（例如借来的版式按 AGPL-3.0 分发），面板上要能标出来
+_LICENSE_RE = re.compile(
+    r"""<meta[^>]+name=["']license["'][^>]*content=["'](.*?)["']""", re.S | re.I
+)
+
+# font-family 声明里的字体名：面板要据此告诉用户「这套模板原本想用什么字体」
+_FONT_DECL_RE = re.compile(r"font-family:\s*([^;}]+);", re.I)
+_FONT_NAME_RE = re.compile(r'"([^"]+)"')
 
 # 模板名会被直接拼成文件名，也存在于 AstrBot 的模板清单里，所以只放行这一小撮字符
 _NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
@@ -281,13 +319,29 @@ def plugin_template_dir() -> Path:
     return Path(__file__).resolve().parent / PLUGIN_TEMPLATE_SUBDIR
 
 
+def _font_families(content: str) -> list[str]:
+    """模板里 font-family 写到的字体名（按出现顺序去重）。"""
+    names: list[str] = []
+    for declaration in _FONT_DECL_RE.findall(content):
+        for name in _FONT_NAME_RE.findall(declaration):
+            if name not in names:
+                names.append(name)
+    return names
+
+
 class TemplateGallery:
     """模板清单 / 预览图缓存 / 槽位写入。"""
 
-    def __init__(self, data_dir: Path, *, plugin_version: str = "") -> None:
+    def __init__(
+        self, data_dir: Path, *, plugin_version: str = "", refresh_minutes: int = 15
+    ) -> None:
         self.data_dir = Path(data_dir)
         self.preview_dir = self.data_dir / "t2i-previews"
         self.plugin_version = plugin_version
+        # 插件自带模板里天气 / 心情 / 台词的换新间隔（分钟），读取模板时写进 HTML
+        self.refresh_minutes = max(1, refresh_minutes)
+        # assets/ 图片的 data URI 缓存：key 是文件路径，值带 mtime/大小用于失效判断
+        self._asset_cache: dict[Path, tuple[float, int, str]] = {}
 
     # ------------------------------------------------------------ 路径与清单
 
@@ -302,6 +356,11 @@ class TemplateGallery:
     @property
     def plugin_dir(self) -> Path:
         return plugin_template_dir()
+
+    @property
+    def assets_dir(self) -> Path:
+        """随插件发布的模板资源目录（模板里写 assets/xxx.jpg、assets/xxx.js 即可）。"""
+        return self.plugin_dir / "assets"
 
     @property
     def slot_path(self) -> Path:
@@ -387,16 +446,25 @@ class TemplateGallery:
             "title": custom_title or self._title(content) or name,
             "custom_title": bool(custom_title),
             "description": self._description(content),
+            "credit": self._credit(content),
+            "credit_url": self._credit_url(content),
+            "license": self._license(content),
             "source": source,
             "modified": modified,
             "bytes": size,
             "updated": updated,
+            "font_families": _font_families(content),
             "variables": sorted({match.group(1) for match in _VAR_RE.finditer(content)}),
             "shiki": "shiki_runtime" in content,
+            "font_preset": FONT_PRESET_BY_TEMPLATE.get(name, ""),
         }
 
     def read(self, name: str) -> str:
-        """按名字读模板内容：用户目录 > 插件自带 > AstrBot 内置。"""
+        """按名字读模板原文：用户目录 > 插件自带 > AstrBot 内置。
+
+        给的是**文件里的原样内容**（图片仍是 ``assets/xxx`` 引用）：面板编辑器需要看到
+        能改的引用；交给渲染之前再过一遍 :meth:`render_text`。
+        """
         guard_name(name)
         for path in (
             self.user_dir / f"{name}.html",
@@ -406,6 +474,55 @@ class TemplateGallery:
             if path.is_file():
                 return path.read_text(encoding="utf-8")
         raise FileNotFoundError(f"模板不存在：{name}")
+
+    def render_text(self, name: str) -> str:
+        """渲染用的内容：把 ``assets/xxx`` 换成图片本身。
+
+        渲染跑的是 ``file://`` 临时文件，相对路径指不到插件目录，图片只能跟着 HTML 走。
+        """
+        return self.apply_refresh_minutes(self.inline_assets(self.read(name)))
+
+    def apply_refresh_minutes(self, text: str) -> str:
+        """把模板里的刷新间隔标记换成配置值。
+
+        模板不能靠 Jinja 变量拿这个值——AstrBot 真实渲染只给 text / version，
+        所以在读模板时就把数字写进 HTML，预览、应用、真实出图三处口径一致。
+        """
+        return _REFRESH_RE.sub(f"var REFRESH_MINUTES = {self.refresh_minutes};", text)
+
+    def inline_assets(self, text: str) -> str:
+        """把模板里的 assets/xxx 引用换成 data URI；找不到的图保持原样（至少不炸）。"""
+
+        def replace(match: re.Match[str]) -> str:
+            uri = self._asset_data_uri(match.group(1))
+            return uri or match.group(0)
+
+        return _ASSET_REF_RE.sub(replace, text)
+
+    def _asset_data_uri(self, name: str) -> str:
+        """读一个模板资源（图片 / 脚本）并编码；按 mtime + 大小缓存，换文件后自动失效。"""
+        for base in (self.assets_dir, self.user_dir / "assets"):
+            path = base / name
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            if not path.is_file():
+                continue
+            cached = self._asset_cache.get(path)
+            if cached and cached[0] == stat.st_mtime and cached[1] == stat.st_size:
+                return cached[2]
+            mime = _ASSET_MIME.get(path.suffix.lower(), "application/octet-stream")
+            try:
+                payload = path.read_bytes()
+            except OSError as exc:
+                logger.warning(f"[t2i] 读取模板资源失败 {path}：{exc}")
+                continue
+            uri = f"data:{mime};base64,{base64.b64encode(payload).decode('ascii')}"
+            self._asset_cache[path] = (stat.st_mtime, stat.st_size, uri)
+            return uri
+        logger.warning(f"[t2i] 模板引用的资源不存在：assets/{name}")
+        return ""
 
     # ------------------------------------------------------------ 新建与编辑
 
@@ -537,7 +654,7 @@ class TemplateGallery:
         digest = self._hash(slot)
         for name in self._names():
             try:
-                if self._hash(self.read(name)) == digest:
+                if self._hash(self.render_text(name)) == digest:
                     return name
             except (OSError, ValueError, FileNotFoundError):
                 continue
@@ -545,7 +662,7 @@ class TemplateGallery:
 
     def apply(self, name: str) -> dict[str, object]:
         """把模板内容写进槽位；返回槽位名、来源与「内容是否有变化」。"""
-        content = self.read(name)
+        content = self.render_text(name)
         target = self.slot_path
         target.parent.mkdir(parents=True, exist_ok=True)
         changed = self.slot_content() != content
@@ -608,8 +725,17 @@ class TemplateGallery:
     # ------------------------------------------------------------ 预览图缓存
 
     def sample_data(self) -> dict[str, str]:
-        """渲染预览时的模板变量，与 AstrBot 真实渲染时给的一致。"""
-        return {"text": self.sample_text(), "version": self.plugin_version or "v0.0.0"}
+        """渲染预览时的模板变量。
+
+        比 AstrBot 真实渲染多一个 ``preview``：插件自带模板用它区分「面板预览」与
+        「真实出图」——预览每次都换一档随机天气，真实出图按天固定。多给的这个变量
+        对别的模板没有副作用（不读它的模板直接用不到）。
+        """
+        return {
+            "text": self.sample_text(),
+            "version": self.plugin_version or "v0.0.0",
+            "preview": "1",
+        }
 
     def preview_file(self, name: str) -> Path:
         """预览图路径：模板内容 + 当前样例文本一起参与哈希。
@@ -617,7 +743,7 @@ class TemplateGallery:
         只哈希模板会让「改了样例文本、卡片还是旧文字」这种局面出现，而预览图恰恰是
         照着样例文本渲的，所以两样任一改动都得换文件名重渲。
         """
-        digest = self._hash(self.read(name) + "\x00" + self.sample_text())
+        digest = self._hash(self.render_text(name) + "\x00" + self.sample_text())
         return self.preview_dir / f"{digest[:16]}.jpg"
 
     def cached_preview(self, name: str) -> Path | None:
@@ -667,6 +793,24 @@ class TemplateGallery:
             return ""
         # 标题里常带 {{ version }} 这类模板变量，展示时不需要
         return re.sub(r"\{\{.*?\}\}", "", match.group(1)).strip()
+
+    def _credit(self, content: str) -> str:
+        """模板出处（面板在「模板变量」下面显示一行，方便指回原作者）。"""
+        match = _ORIGIN_RE.search(content)
+        return match.group(1).strip() if match else ""
+
+    def _credit_url(self, content: str) -> str:
+        """出处链接；只放行 http(s)，别把 javascript: 之类塞进面板。"""
+        match = _ORIGIN_URL_RE.search(content)
+        if not match:
+            return ""
+        url = match.group(1).strip()
+        return url if url.startswith(("http://", "https://")) else ""
+
+    def _license(self, content: str) -> str:
+        """模板自己声明的许可证；没有声明就是空串（跟插件本体一样按 Apache-2.0）。"""
+        match = _LICENSE_RE.search(content)
+        return match.group(1).strip() if match else ""
 
     def _description(self, content: str) -> str:
         match = _DESC_RE.search(content)

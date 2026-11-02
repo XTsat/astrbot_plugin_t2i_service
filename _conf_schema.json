@@ -228,5 +228,17 @@
         "default": true
       }
     }
+  },
+  "templates": {
+    "description": "转图模板",
+    "type": "object",
+    "items": {
+      "refresh_minutes": {
+        "description": "插件模板数据刷新间隔（分钟）",
+        "type": "int",
+        "hint": "插件自带的日记模板里，天气、心情配图与那句台词按这个间隔换一批（按时间分桶，不会每条消息都变）。面板里的模板预览不受影响，仍然每次随机。改完要重新点一次「应用」，槽位里的模板文件才会吃到新间隔。",
+        "default": 15
+      }
+    }
   }
 }

@@ -28,5 +28,27 @@ Substantial changes made for this repository:
 - added tests for the plugin layer, tools/envlab/ for containerized
   end-to-end verification, and plugin documentation.
 
+Third-party template assets (NOT covered by the Apache License above):
+
+- t2i_plugin/plugin_templates/atrifeed_diary.html
+- t2i_plugin/plugin_templates/atrifeed_diary_legacy.html
+
+  Adapted from astrbot_plugin_atrifeed by Heximiao
+  (https://github.com/Heximiao/astrbot_plugin_atrifeed), licensed under the
+  GNU Affero General Public License v3.0. These two files are derivative
+  works of that project, remain under AGPL-3.0, and are distributed
+  separately from the Apache-2.0 code of this plugin. Adaptations: the body
+  now renders the AstrBot ``text`` variable as Markdown, the date, weekday,
+  character count and render time are filled in by an inline script, and the
+  weather / mood slots that only astrbot_plugin_atrifeed can populate are
+  reproduced from its src/diary/renderer.py: one of the five weather states is
+  picked at random per render, the mood card uses the same two images the
+  upstream plugin hard-codes (pic/pictorial/my_atri1/emoji1.jpg and
+  pic/emoji/tired/atri_tired1.jpg, cropped and embedded as base64 data URIs)
+  together with a random line from its ATRI_ONE_LINERS list. The two
+  pic/lihui illustrations (shop/atri6.png, atri2.png) are bundled as well,
+  downscaled to 640 px height and re-encoded as WebP data URIs. Layout,
+  colours and copy come from the original templates.
+
 The upstream project and this port are both distributed under the Apache
 License, Version 2.0. See LICENSE for the full license text.

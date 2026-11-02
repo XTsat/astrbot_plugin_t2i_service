@@ -343,6 +343,21 @@
           </p>
         </section>
         </div>
+
+        <div id="panel-t2i-fonts" class="stack" role="tabpanel" hidden>
+          <section class="card">
+            <p class="muted" data-i18n-html="upstream.t2i.desc">
+              这里列的是本插件自带 T2i 模板用到的字体。可以整套装，也可以只装某个家族（在「概览 → 单个字体家族」里）；装完回到「T2i 模板」栏点一次「重新渲染」就能看到新字形。
+            </p>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2 data-i18n="upstream.t2i.title">T2i 模板字体</h2>
+            </div>
+            <div class="grid" id="templates-t2i"></div>
+          </section>
+        </div>
       </div>
 
     </main>
@@ -437,6 +452,33 @@
           </button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="t2i-font-dialog" class="t2i-editor">
+      <h2 data-i18n="t2i.fontDialog.title">这套模板还能用上原作者的字体</h2>
+      <p class="muted" id="t2i-font-dialog-text"></p>
+      <p class="t2i-license" id="t2i-font-dialog-license" hidden></p>
+      <div class="alert warn">
+        <span class="alert-text" data-i18n="t2i.fontDialog.consequence">
+          不装也能出图：模板会自动降级到服务器自带的中文字体，日文明朝体、楷体这类字形还原不出来，标题与正文看起来会和模板原作不一样。
+        </span>
+      </div>
+      <p class="muted small">
+        <span data-i18n="t2i.fontDialog.whereBefore">想稍后再装，去</span>
+        <button class="link" id="t2i-font-dialog-goto" type="button" data-i18n="t2i.fontDialog.whereLink">
+          对接项目 → T2i 模板
+        </button>
+        <span data-i18n="t2i.fontDialog.whereAfter">那一栏。</span>
+      </p>
+      <div class="t2i-form-actions">
+        <button class="ghost" id="t2i-font-dialog-skip" type="button" data-i18n="t2i.fontDialog.skip">
+          忽略，直接应用
+        </button>
+        <span class="t2i-form-gap"></span>
+        <button class="primary" id="t2i-font-dialog-download" type="button" data-i18n="t2i.fontDialog.download">
+          下载字体并应用
+        </button>
+      </div>
     </dialog>
 
     <dialog id="t2i-lightbox" class="lightbox">
