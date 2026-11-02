@@ -83,10 +83,10 @@ async def test_only_panel_web_apis_are_registered(plugin):
     )
     routes = [route for route, _handler, _methods, _desc in instance.context.web_apis]
     prefix = "/astrbot_plugin_t2i_service"
-    assert len(routes) == len(set(routes)) == 15
+    assert len(routes) == len(set(routes)) == 16
     assert len([route for route in routes if route.startswith(f"{prefix}/fonts/")]) == 8
     assert (
-        len([route for route in routes if route.startswith(f"{prefix}/templates/")]) == 7
+        len([route for route in routes if route.startswith(f"{prefix}/templates/")]) == 8
     )
     assert all(route.startswith(prefix) for route in routes)
 

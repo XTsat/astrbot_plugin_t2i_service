@@ -340,8 +340,13 @@ def _patch_envelope(monkeypatch) -> None:
     )
 
 
-def _build_api(gallery, *, preview=None, applied=None, state=None) -> TemplateWebApi:
+def _build_api(
+    gallery, *, preview=None, draft=None, applied=None, state=None
+) -> TemplateWebApi:
     async def default_preview(name: str) -> tuple[bool, str]:
+        return False, "预览不可用"
+
+    async def default_draft(content: str) -> tuple[bool, str]:
         return False, "预览不可用"
 
     async def default_apply(name: str) -> dict[str, object]:
@@ -354,6 +359,7 @@ def _build_api(gallery, *, preview=None, applied=None, state=None) -> TemplateWe
         "astrbot_plugin_t2i_service",
         gallery,
         preview=preview or default_preview,
+        preview_draft=draft or default_draft,
         apply=applied or default_apply,
         state=state or default_state,
     )
@@ -366,7 +372,7 @@ def test_web_registers_prefixed_template_routes(dirs):
     gallery, _, _ = dirs
     context = _FakeContext()
     routes = _build_api(gallery).register(context)
-    assert len(routes) == len(context.routes) == 7
+    assert len(routes) == len(context.routes) == 8
     for route, handler, methods, desc in context.routes:
         assert route.startswith("/astrbot_plugin_t2i_service/templates/")
         assert methods in (["GET"], ["POST"])
@@ -442,6 +448,48 @@ async def test_web_preview_reports_render_failure(dirs, monkeypatch):
     response = await api.page_preview()
     assert response["code"] == 500
     assert "Chromium" in response["message"]
+
+
+@pytest.mark.skipif(
+    not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
+)
+async def test_web_draft_preview_renders_unsaved_content(dirs, monkeypatch, tmp_path):
+    gallery, _, _ = dirs
+    _patch_envelope(monkeypatch)
+    rendered = tmp_path / "draft.jpg"
+    rendered.write_bytes(b"\xff\xd8\xff\xe0jpeg")
+    seen: list[str] = []
+
+    async def draft(content: str) -> tuple[bool, str]:
+        seen.append(content)
+        return True, str(rendered)
+
+    api = _build_api(gallery, draft=draft)
+    monkeypatch.setattr(
+        template_web, "request", _FakeRequest({"content": "<h1>{{ text }}</h1>"})
+    )
+    response = await api.page_preview_draft()
+    assert response["code"] == 0
+    assert response["data"]["image"].startswith("data:image/jpeg;base64,")
+    assert seen == ["<h1>{{ text }}</h1>"]
+
+    # 草稿没有模板名可以挂缓存：第二次照样现渲，也不在预览目录里留图
+    await api.page_preview_draft()
+    assert len(seen) == 2
+    assert list(gallery.preview_dir.glob("*.jpg")) == []
+
+
+@pytest.mark.skipif(
+    not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
+)
+async def test_web_draft_preview_rejects_empty_content(dirs, monkeypatch):
+    gallery, _, _ = dirs
+    _patch_envelope(monkeypatch)
+    api = _build_api(gallery)
+    monkeypatch.setattr(template_web, "request", _FakeRequest({"content": "   \n"}))
+    response = await api.page_preview_draft()
+    assert response["code"] == 400
+    assert "不能为空" in response["message"]
 
 
 @pytest.mark.skipif(

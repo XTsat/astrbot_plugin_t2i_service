@@ -6,6 +6,7 @@
 
 * ``templates/list``     —— 模板清单 + 槽位状态；
 * ``templates/preview``  —— 渲染（或直接返回缓存的）预览图；
+* ``templates/preview_draft`` —— 渲染编辑器里还没保存的正文（不写盘、不进缓存）；
 * ``templates/apply``    —— 把模板写进槽位并写 AstrBot 的 t2i 配置；
 * ``templates/create``   —— 新建用户模板（空白 / 复制现有 / 粘贴 HTML）；
 * ``templates/save``     —— 覆盖保存用户模板的内容；
@@ -38,6 +39,11 @@ except Exception:  # noqa: BLE001
     WEB_API_AVAILABLE = False
 
 
+# 草稿预览的正文上限：页面把整段 HTML 塞进请求体，正常模板只有几十 KB，
+# 挡住误贴进来的超大内容，免得一次渲染把并发全占住
+MAX_DRAFT_CHARS = 512 * 1024
+
+
 class TemplateWebApi:
     """把模板清单 / 预览 / 应用暴露成页面可调用的接口。"""
 
@@ -47,12 +53,14 @@ class TemplateWebApi:
         gallery: TemplateGallery,
         *,
         preview: Callable[[str], Awaitable[tuple[bool, str]]],
+        preview_draft: Callable[[str], Awaitable[tuple[bool, str]]],
         apply: Callable[[str], Awaitable[dict[str, object]]],
         state: Callable[[], Awaitable[dict[str, object]]],
     ) -> None:
         self.plugin_name = plugin_name
         self.gallery = gallery
         self.preview = preview
+        self.preview_draft = preview_draft
         self.apply_template = apply
         self.state = state
         self.registered: list[str] = []
@@ -77,6 +85,12 @@ class TemplateWebApi:
                 self.page_preview,
                 ["POST"],
                 "模板预览图",
+            ),
+            (
+                f"/{self.plugin_name}/templates/preview_draft",
+                self.page_preview_draft,
+                ["POST"],
+                "编辑器草稿预览图",
             ),
             (
                 f"/{self.plugin_name}/templates/apply",
@@ -167,6 +181,28 @@ class TemplateWebApi:
         if not data:
             return self._fail("预览图读取失败", status_code=500)
         return self._ok({"name": name, "image": _data_url(data), "cached": False})
+
+    async def page_preview_draft(self) -> object:
+        """渲染编辑器里尚未保存的正文：只出图，不写模板文件也不进预览缓存。
+
+        编辑时反复看效果会调用很多次，缓存按模板内容哈希命名，草稿没有名字可用，
+        存进去只会变成一堆没人回收的孤儿图。
+        """
+        payload = await request.json(default={})
+        content = str(payload.get("content") or "")
+        if not content.strip():
+            return self._fail("模板内容不能为空")
+        if len(content) > MAX_DRAFT_CHARS:
+            return self._fail(
+                f"模板内容太长（超过 {MAX_DRAFT_CHARS // 1024} KB），先在编辑器里精简一下"
+            )
+        ok, detail = await self.preview_draft(content)
+        if not ok:
+            return self._fail(detail, status_code=500)
+        data = await asyncio.to_thread(_read_b64, Path(detail))
+        if not data:
+            return self._fail("预览图读取失败", status_code=500)
+        return self._ok({"image": _data_url(data), "cached": False})
 
     async def page_apply(self) -> object:
         payload = await request.json(default={})

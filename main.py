@@ -176,6 +176,7 @@ class T2IServicePlugin(Star):
             PLUGIN_NAME,
             self.templates,
             preview=self._render_template_preview,
+            preview_draft=self._render_template_draft,
             apply=self._apply_t2i_template,
             state=self._template_slot_state,
         )
@@ -532,6 +533,16 @@ class T2IServicePlugin(Star):
             return False, f"读取模板失败：{exc}"
         return await self.server.render_template_probe(
             template, self.templates.sample_data()
+        )
+
+    async def _render_template_draft(self, content: str) -> tuple[bool, str]:
+        """渲染编辑器里还没保存的正文，返回（是否成功, 图片路径或错误信息）。
+
+        变量与正式预览、真实出图都用同一套样例数据，否则「看着没问题、发出去变形」
+        会更难查。
+        """
+        return await self.server.render_template_probe(
+            content, self.templates.sample_data()
         )
 
     async def _apply_t2i_template(self, name: str) -> dict[str, object]:

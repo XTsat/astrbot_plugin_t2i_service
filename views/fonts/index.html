@@ -314,44 +314,64 @@
     <dialog id="t2i-editor" class="t2i-editor">
       <form id="t2i-editor-form" novalidate>
         <h2 id="t2i-editor-title" data-i18n="t2i.createTitle">新建模板</h2>
-        <label class="t2i-field">
-          <span data-i18n="t2i.nameLabel">模板名</span>
-          <input
-            id="t2i-editor-name"
-            type="text"
-            maxlength="64"
-            autocomplete="off"
-            spellcheck="false"
-            required
-            placeholder="my_template"
-          />
-        </label>
-        <p class="muted small" data-i18n="t2i.nameHint">
-          只能用字母、数字、下划线和短横线，以字母或数字开头；保存后它会出现在模板清单里。
-        </p>
-        <label class="t2i-field" id="t2i-editor-source-field">
-          <span data-i18n="t2i.sourceLabel">起始内容</span>
-          <select id="t2i-editor-source"></select>
-        </label>
-        <label class="t2i-field">
-          <span data-i18n="t2i.displayLabel">显示名称（可选，可以写中文）</span>
-          <input
-            id="t2i-editor-display"
-            type="text"
-            maxlength="64"
-            autocomplete="off"
-            data-i18n-placeholder="t2i.displayHint"
-          />
-        </label>
-        <label class="t2i-field">
-          <span data-i18n="t2i.contentLabel">模板 HTML（留空就用上面的起始内容）</span>
-          <textarea
-            id="t2i-editor-content"
-            rows="12"
-            spellcheck="false"
-            placeholder="&lt;!doctype html&gt; … {{ text }} …"
-          ></textarea>
-        </label>
+        <div class="t2i-editor-body">
+          <div class="t2i-editor-fields">
+            <label class="t2i-field">
+              <span data-i18n="t2i.nameLabel">模板名</span>
+              <input
+                id="t2i-editor-name"
+                type="text"
+                maxlength="64"
+                autocomplete="off"
+                spellcheck="false"
+                required
+                placeholder="my_template"
+              />
+            </label>
+            <p class="muted small" data-i18n="t2i.nameHint">
+              只能用字母、数字、下划线和短横线，以字母或数字开头；保存后它会出现在模板清单里。
+            </p>
+            <label class="t2i-field" id="t2i-editor-source-field">
+              <span data-i18n="t2i.sourceLabel">起始内容</span>
+              <select id="t2i-editor-source"></select>
+            </label>
+            <label class="t2i-field">
+              <span data-i18n="t2i.displayLabel">显示名称（可选，可以写中文）</span>
+              <input
+                id="t2i-editor-display"
+                type="text"
+                maxlength="64"
+                autocomplete="off"
+                data-i18n-placeholder="t2i.displayHint"
+              />
+            </label>
+            <label class="t2i-field">
+              <span data-i18n="t2i.contentLabel">模板 HTML（留空就用上面的起始内容）</span>
+              <textarea
+                id="t2i-editor-content"
+                rows="16"
+                spellcheck="false"
+                placeholder="&lt;!doctype html&gt; … {{ text }} …"
+              ></textarea>
+            </label>
+          </div>
+          <section class="t2i-draft" id="t2i-editor-preview" hidden>
+            <div class="t2i-draft-head">
+              <span class="t2i-draft-title" data-i18n="t2i.previewPaneTitle">
+                预览（用模板样例文本渲染，不会保存）
+              </span>
+              <button
+                class="ghost"
+                id="t2i-editor-preview-close"
+                type="button"
+                data-i18n="t2i.previewPaneClose"
+              >
+                收起
+              </button>
+            </div>
+            <div class="t2i-draft-body" id="t2i-editor-preview-body"></div>
+          </section>
+        </div>
         <p class="alert danger small" id="t2i-editor-error" hidden></p>
         <div class="t2i-form-actions">
           <button
@@ -364,6 +384,14 @@
             删除模板
           </button>
           <span class="t2i-form-gap"></span>
+          <button
+            class="ghost"
+            id="t2i-editor-preview-btn"
+            type="button"
+            data-i18n="t2i.previewDraft"
+          >
+            预览当前内容
+          </button>
           <button class="ghost" id="t2i-editor-cancel" type="button" data-i18n="t2i.cancel">
             取消
           </button>

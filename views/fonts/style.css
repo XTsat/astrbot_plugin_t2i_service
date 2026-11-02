@@ -996,6 +996,94 @@ button.pick[aria-pressed="true"] {
   background: rgba(0, 0, 0, 0.62);
 }
 
+/* 铺开草稿预览后放宽：模板按 800px 视口渲染，窄弹窗里缩下去看不清排版 */
+.t2i-editor.has-preview {
+  width: min(96vw, 1240px);
+}
+
+/* 没开预览时就是一栏；auto-fit 让弹窗不够宽时自动退回上下排列，不必另写断点 */
+.t2i-editor-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  /* 两栏等高：右栏跟着左栏的高度走，模板输出再长也不会把弹窗撑得更长 */
+  align-items: stretch;
+}
+
+.t2i-editor.has-preview .t2i-editor-body {
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+}
+
+/* 左栏最后一个字段的下外边距不算进栏高：预览栏底边要对齐 textarea 的底边，
+   而不是再往下多出一个字段间距 */
+.t2i-editor-fields > .t2i-field:last-child {
+  margin-bottom: 0;
+}
+
+.t2i-draft {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+/* 预览图再长也不能参与行高计算（否则两栏会被它一起撑到几千像素）：
+   height:0 + min-height 让这一栏跟着左栏的高度走，图片在框内滚动。
+   顶边要比左栏低一个字段标签的高度（对齐第一个输入框的顶边），底边仍与左栏齐平。
+   只在真的排成两栏时生效——单栏堆叠时行高是 auto，这个写法会把预览压成 0 高 */
+@media (min-width: 800px) {
+  .t2i-editor.has-preview .t2i-draft {
+    --t2i-pane-offset: 23px;
+    height: 0;
+    min-height: calc(100% - var(--t2i-pane-offset));
+    margin-top: var(--t2i-pane-offset);
+    overflow: hidden;
+  }
+}
+
+.t2i-draft-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.t2i-draft-title {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* 图片贴顶往下排、上方留一段空白：紧贴边框看排版会显得局促；
+   超出栏位高度就在框内滚动，不把弹窗顶长 */
+.t2i-draft-body {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 12px 12px;
+}
+
+.t2i-draft-body img {
+  display: block;
+  max-width: 100%;
+  border-radius: calc(var(--radius) - 2px);
+  box-shadow: var(--shadow);
+  cursor: zoom-in;
+}
+
+/* 编辑器默认高度按视口给：笔记本屏幕上也够长，但不会顶到弹窗的 90vh 上限；
+   大屏上再放宽一点。用户仍可以拖动右下角自己调 */
+.t2i-editor textarea {
+  height: clamp(300px, 44vh, 560px);
+}
+
 .t2i-editor h2 {
   margin: 0 0 12px;
   font-size: 16px;
@@ -1089,6 +1177,11 @@ button.pick[aria-pressed="true"] {
   .t2i-editor {
     width: 96vw;
     padding: 14px;
+  }
+
+  /* 手机屏幕窄，编辑区不适合占掉半个屏幕：收一点，靠弹窗整体滚动 */
+  .t2i-editor textarea {
+    height: clamp(220px, 32vh, 380px);
   }
 
   .t2i-form-actions {

@@ -60,6 +60,10 @@ const els = {
   t2iEditorDelete: $("t2i-editor-delete"),
   t2iEditorCancel: $("t2i-editor-cancel"),
   t2iEditorSubmit: $("t2i-editor-submit"),
+  t2iEditorPreview: $("t2i-editor-preview"),
+  t2iEditorPreviewBody: $("t2i-editor-preview-body"),
+  t2iEditorPreviewBtn: $("t2i-editor-preview-btn"),
+  t2iEditorPreviewClose: $("t2i-editor-preview-close"),
   projectPanel: $("panel-project"),
 };
 
@@ -1462,6 +1466,7 @@ async function openT2iEditor(name) {
   state.t2iEditing = name || "";
   const editing = Boolean(name);
   fillT2iEditorSources();
+  resetT2iDraftPane();
   els.t2iEditorTitle.textContent = editing
     ? t("t2i.editTitle", "编辑模板")
     : t("t2i.createTitle", "新建模板");
@@ -1506,6 +1511,7 @@ async function openT2iEditor(name) {
 function closeT2iEditor() {
   if (!els.t2iEditor) return;
   state.t2iEditing = "";
+  resetT2iDraftPane();
   if (typeof els.t2iEditor.close === "function") els.t2iEditor.close();
   els.t2iEditor.removeAttribute("open");
 }
@@ -1522,6 +1528,66 @@ function fillT2iEditorSources() {
     );
   }
   els.t2iEditorSource.innerHTML = options.join("");
+}
+
+// 草稿预览要等 Chromium：期间用户可能重开弹窗或再点一次，旧结果不能盖到新状态上
+let t2iDraftSeq = 0;
+
+/** 收起并清空草稿预览：换模板或关弹窗时，上一张图不能留在新正文旁边。 */
+function resetT2iDraftPane() {
+  t2iDraftSeq += 1;  // 让还在渲染中的那次请求作废
+  if (els.t2iEditorPreview) els.t2iEditorPreview.hidden = true;
+  if (els.t2iEditorPreviewBody) els.t2iEditorPreviewBody.innerHTML = "";
+  if (els.t2iEditor) els.t2iEditor.classList.remove("has-preview");
+}
+
+/**
+ * 编辑器里要渲染的正文：优先用文本框里的内容；新建时文本框留空就用选中的起始内容，
+ * 这样「复制一个现有模板再改」也能先按原样看一眼。
+ */
+async function t2iDraftContent() {
+  const typed = els.t2iEditorContent ? els.t2iEditorContent.value || "" : "";
+  if (typed.trim()) return typed;
+  const copying = Boolean(els.t2iEditorSourceField && !els.t2iEditorSourceField.hidden);
+  const source = copying && els.t2iEditorSource ? els.t2iEditorSource.value : "";
+  if (!source) return "";
+  const data = await apiPost("templates/read", { name: source });
+  return data && typeof data.content === "string" ? data.content : "";
+}
+
+/** 渲染还没保存的正文并铺开预览区；后端只出图，不碰模板文件与预览缓存。 */
+async function previewT2iDraft() {
+  if (!els.t2iEditorPreview || !els.t2iEditorPreviewBody) return;
+  const content = await t2iDraftContent();
+  if (!content.trim()) {
+    // 读起始内容失败也会走到这里，接口给的错误比「正文是空的」更具体
+    showT2iEditorError(
+      state.lastError ||
+        t("t2i.previewDraftEmpty", "正文是空的，先写点 HTML 或者选一个起始内容。"),
+    );
+    return;
+  }
+  hideT2iEditorError();
+  els.t2iEditorPreview.hidden = false;
+  if (els.t2iEditor) els.t2iEditor.classList.add("has-preview");
+  els.t2iEditorPreviewBody.innerHTML = `<span class="spinner"></span><span class="muted small">${escapeHtml(
+    t("t2i.previewDraftLoading", "正在渲染预览…"),
+  )}</span>`;
+  if (els.t2iEditorPreviewBtn) els.t2iEditorPreviewBtn.disabled = true;
+  const seq = ++t2iDraftSeq;
+  const data = await apiPost("templates/preview_draft", { content });
+  if (els.t2iEditorPreviewBtn) els.t2iEditorPreviewBtn.disabled = false;
+  if (seq !== t2iDraftSeq) return;  // 弹窗已重开或已收起，这次结果作废
+  if (!data || !data.image) {
+    els.t2iEditorPreviewBody.innerHTML = `<span class="muted small">${escapeHtml(
+      state.lastError ||
+        t("t2i.previewDraftFailed", "预览渲染失败，看看日志里 Chromium 有没有跑起来"),
+    )}</span>`;
+    return;
+  }
+  els.t2iEditorPreviewBody.innerHTML = `<img src="${data.image}" alt="${escapeHtml(
+    t("t2i.previewPaneAlt", "模板预览"),
+  )}" />`;
 }
 
 function showT2iEditorError(message) {
@@ -1645,15 +1711,20 @@ async function deleteT2iTemplate(name, button) {
   );
 }
 
-function openT2iZoom(name) {
-  const shot = state.t2iShots.get(name);
-  if (!shot || shot.status !== "ready" || !shot.image) return;
-  if (!els.t2iLightbox) return;
-  els.t2iLightboxImg.src = shot.image;
-  els.t2iLightboxImg.alt = t2iLabel({ name });
+/** 弹大图：卡片预览与编辑器草稿预览共用同一个 lightbox。 */
+function showT2iLightbox(image, alt) {
+  if (!els.t2iLightbox || !els.t2iLightboxImg) return;
+  els.t2iLightboxImg.src = image;
+  els.t2iLightboxImg.alt = alt || "";
   // 插件页在 iframe 里，<dialog> 的模态行为仍然可用；老浏览器退回 open 属性
   if (typeof els.t2iLightbox.showModal === "function") els.t2iLightbox.showModal();
   else els.t2iLightbox.setAttribute("open", "");
+}
+
+function openT2iZoom(name) {
+  const shot = state.t2iShots.get(name);
+  if (!shot || shot.status !== "ready" || !shot.image) return;
+  showT2iLightbox(shot.image, t2iLabel({ name }));
 }
 
 function closeT2iZoom() {
@@ -1702,6 +1773,26 @@ function bindT2i() {
   }
   if (els.t2iEditorCancel) {
     els.t2iEditorCancel.addEventListener("click", closeT2iEditor);
+  }
+  if (els.t2iEditorPreviewBtn) {
+    els.t2iEditorPreviewBtn.addEventListener("click", () => {
+      previewT2iDraft();
+    });
+  }
+  if (els.t2iEditorPreviewClose) {
+    els.t2iEditorPreviewClose.addEventListener("click", () => {
+      // 只收起预览区，正文不动；想再看一次就重新点「预览当前内容」
+      if (els.t2iEditorPreview) els.t2iEditorPreview.hidden = true;
+      if (els.t2iEditor) els.t2iEditor.classList.remove("has-preview");
+    });
+  }
+  if (els.t2iEditorPreviewBody) {
+    // 右栏只有半屏宽，缩下去的小字看不清：点一下按原尺寸放大看
+    els.t2iEditorPreviewBody.addEventListener("click", (event) => {
+      const img = event.target.closest("img");
+      if (!img || !img.src) return;
+      showT2iLightbox(img.src, img.alt);
+    });
   }
   if (els.t2iEditor) {
     els.t2iEditor.addEventListener("click", (event) => {
