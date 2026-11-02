@@ -199,11 +199,38 @@ function toast(message, kind = "") {
 let armedKey = "";
 let armedButton = null;
 let armedTimer = 0;
+let armHintEl = null;
+
+/** 清掉当前的待确认提示（换一项、确认、超时都要清）。 */
+function clearArmHint() {
+  if (armHintEl) {
+    armHintEl.remove();
+    armHintEl = null;
+  }
+}
+
+/**
+ * 待确认提示就地显示在按钮所在的那张卡里。
+ * 之前用页面底部的 toast：二级栏位里提示离被点的按钮很远，编辑弹窗里 toast 还落在
+ * 遮罩下面被压暗，用户对不上是哪一项。
+ */
+function showArmHint(button, hint) {
+  clearArmHint();
+  const el = document.createElement("p");
+  el.className = "arm-hint";
+  el.textContent = hint;
+  const card = button.closest(".tile, .t2i-card");
+  const actions = button.closest(".t2i-form-actions");
+  if (card) card.appendChild(el);
+  else if (actions) actions.before(el);
+  else button.parentElement.appendChild(el);
+  armHintEl = el;
+}
 
 /**
  * 插件页跑在 sandbox 属性没有 allow-modals 的 iframe 里，window.confirm() 会被浏览器
  * 直接忽略并返回 false，删除与批量下载因此永远走不下去；这里改成两步点按：第一次点
- * 进入待确认（按钮变红 + 提示），4 秒内再点一次才执行。
+ * 进入待确认（按钮变红 + 就地提示），4 秒内再点一次才执行。
  */
 function armConfirm(button, key, hint) {
   if (armedButton === button && armedKey === key) {
@@ -212,6 +239,7 @@ function armConfirm(button, key, hint) {
     armedTimer = 0;
     armedButton.classList.remove("armed");
     armedButton = null;
+    clearArmHint();
     return true;
   }
   if (armedButton) armedButton.classList.remove("armed");
@@ -219,12 +247,13 @@ function armConfirm(button, key, hint) {
   armedKey = key;
   armedButton = button;
   button.classList.add("armed");
-  toast(hint);
+  showArmHint(button, hint);
   armedTimer = setTimeout(() => {
     if (armedButton) armedButton.classList.remove("armed");
     armedButton = null;
     armedKey = "";
     armedTimer = 0;
+    clearArmHint();
   }, 4000);
   return false;
 }
@@ -972,7 +1001,11 @@ function bindInstalled() {
     const button = event.target.closest("button");
     if (!button || !button.dataset.path) return;
     const path = button.dataset.path;
-    if (!armConfirm(button, `file:${path}`, t("toast.armDelete", "再点一次确认删除"))) return;
+    const file = (button.closest(".file-line")?.querySelector(".fname")?.textContent || "").trim();
+    const hint = file
+      ? t("toast.armDeleteFile", "再点一次删除字体文件「{name}」", { name: file })
+      : t("toast.armDelete", "再点一次确认删除");
+    if (!armConfirm(button, `file:${path}`, hint)) return;
     button.disabled = true;
     const data = await apiPost("fonts/delete", { path });
     if (!data) {

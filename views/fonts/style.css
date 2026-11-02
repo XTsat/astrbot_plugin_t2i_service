@@ -575,6 +575,15 @@ button.armed:hover:not(:disabled) {
   color: #fff;
 }
 
+/* 待确认提示跟着按钮走：页面底部的 toast 在二级栏位里离按钮太远，
+   在编辑弹窗里还会被遮罩压暗，看不出提示指的是哪一项 */
+.arm-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--danger);
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
