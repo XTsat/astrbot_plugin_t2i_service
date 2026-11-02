@@ -334,6 +334,16 @@
           <select id="t2i-editor-source"></select>
         </label>
         <label class="t2i-field">
+          <span data-i18n="t2i.displayLabel">显示名称（可选，可以写中文）</span>
+          <input
+            id="t2i-editor-display"
+            type="text"
+            maxlength="64"
+            autocomplete="off"
+            data-i18n-placeholder="t2i.displayHint"
+          />
+        </label>
+        <label class="t2i-field">
           <span data-i18n="t2i.contentLabel">模板 HTML（留空就用上面的起始内容）</span>
           <textarea
             id="t2i-editor-content"
@@ -344,6 +354,16 @@
         </label>
         <p class="alert danger small" id="t2i-editor-error" hidden></p>
         <div class="t2i-form-actions">
+          <button
+            class="danger"
+            id="t2i-editor-delete"
+            type="button"
+            data-i18n="t2i.delete"
+            hidden
+          >
+            删除模板
+          </button>
+          <span class="t2i-form-gap"></span>
           <button class="ghost" id="t2i-editor-cancel" type="button" data-i18n="t2i.cancel">
             取消
           </button>

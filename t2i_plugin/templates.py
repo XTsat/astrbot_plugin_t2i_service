@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shutil
 from pathlib import Path
@@ -208,6 +209,27 @@ _VAR_RE = re.compile(r"\{\{\s*([A-Za-z_]\w*)")
 # 模板名会被直接拼成文件名，也存在于 AstrBot 的模板清单里，所以只放行这一小撮字符
 _NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 
+# 面板上的显示名单独存一份：模板文件名是标识（AstrBot 配置里指的就是它），
+# 改文件名会连带把已应用的设置指空，所以显示名不能写进文件名。
+_TITLES_FILE = "_titles.json"
+_TITLE_LIMIT = 64
+
+
+def guard_name(name: str) -> str:
+    """读/删只要求「不会跳出模板目录」；新建时的字符限制另有一套（_NAME_RE）。"""
+    text = (name or "").strip()
+    if not text or ".." in text or "/" in text or "\\" in text:
+        raise ValueError("模板名称包含非法字符。")
+    return text
+
+
+def _clean_title(value: str) -> str:
+    """显示名允许中文与空格，只挡掉换行和控制字符——它会被塞进 HTML 文本节点。"""
+    text = " ".join((value or "").split())
+    if len(text) > _TITLE_LIMIT:
+        raise ValueError(f"显示名称最长 {_TITLE_LIMIT} 个字符。")
+    return text
+
 
 def _path_helper(name: str) -> Path | None:
     """调用 AstrBot 的路径助手；不存在或抛异常都返回 None。"""
@@ -265,6 +287,10 @@ class TemplateGallery:
     def slot_path(self) -> Path:
         return self.user_dir / f"{SLOT_NAME}.html"
 
+    @property
+    def titles_path(self) -> Path:
+        return self.user_dir / _TITLES_FILE
+
     def _names(self) -> list[str]:
         """两个目录里所有模板名（不含本插件的槽位本身）。"""
         names: set[str] = set()
@@ -311,9 +337,11 @@ class TemplateGallery:
                 modified = self._hash(self.read(name)) != self._hash_path(builtin_path)
             except OSError:
                 modified = False
+        custom_title = self._custom_titles().get(name, "")
         return {
             "name": name,
-            "title": self._title(content) or name,
+            "title": custom_title or self._title(content) or name,
+            "custom_title": bool(custom_title),
             "description": self._description(content),
             "source": "builtin" if builtin else "custom",
             "modified": modified,
@@ -325,8 +353,7 @@ class TemplateGallery:
 
     def read(self, name: str) -> str:
         """按名字读模板内容：先用户目录再内置目录。"""
-        if not name or ".." in name or "/" in name or "\\" in name:
-            raise ValueError("模板名称包含非法字符。")
+        guard_name(name)
         for path in (self.user_dir / f"{name}.html", self.builtin_dir / f"{name}.html"):
             if path.is_file():
                 return path.read_text(encoding="utf-8")
@@ -340,13 +367,15 @@ class TemplateGallery:
         *,
         source: str = "",
         content: str = "",
+        title: str = "",
     ) -> dict[str, object]:
         """新建一个用户模板：起始内容可以是粘贴的 HTML，也可以复制某个现有模板。"""
         target = self._writable_path(name, must_not_exist=True)
         self._write(target, self._initial_content(source=source, content=content))
+        self._store_title(name, title)
         return self.describe(name)
 
-    def save(self, name: str, content: str) -> dict[str, object]:
+    def save(self, name: str, content: str, *, title: str | None = None) -> dict[str, object]:
         """覆盖写用户模板；内置模板被改后用户目录里会多一份副本（AstrBot 用户优先）。"""
         text = (content or "").strip()
         if not text:
@@ -355,7 +384,62 @@ class TemplateGallery:
         if not text.endswith("\n"):
             text += "\n"
         self._write(target, text)
+        if title is not None:
+            self._store_title(name, title)
         return self.describe(name)
+
+    def delete(self, name: str) -> dict[str, object]:
+        """删掉用户目录里的模板；内置模板只能删用户副本，删完内置版本又露出来。"""
+        guard_name(name)
+        if name == SLOT_NAME:
+            raise ValueError("该名字被本插件占用，不能删除。")
+        target = self.user_dir / f"{name}.html"
+        if not target.is_file():
+            if (self.builtin_dir / f"{name}.html").is_file():
+                raise ValueError("内置模板不能删除。")
+            raise FileNotFoundError(f"模板不存在：{name}")
+        target.unlink()
+        self._store_title(name, "")
+        self._drop_preview(name)
+        return {
+            "name": name,
+            "deleted": True,
+            "shadowed": (self.builtin_dir / f"{name}.html").is_file(),
+        }
+
+    def _store_title(self, name: str, title: str) -> None:
+        """写显示名；空串表示删掉记录，回落到模板自带的 <title>。"""
+        clean = _clean_title(title)
+        titles = self._custom_titles()
+        if clean:
+            titles[name] = clean
+        elif name in titles:
+            titles.pop(name)
+        else:
+            return
+        self._titles_write(titles)
+
+    def _custom_titles(self) -> dict[str, str]:
+        try:
+            raw = self.titles_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return {}
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {str(key): str(value) for key, value in data.items() if str(value).strip()}
+
+    def _titles_write(self, titles: dict[str, str]) -> None:
+        if not titles:
+            try:
+                self.titles_path.unlink()
+            except OSError:
+                pass
+            return
+        self._write(self.titles_path, json.dumps(titles, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
 
     def _writable_path(self, name: str, *, must_not_exist: bool) -> Path:
         if not _NAME_RE.fullmatch(name or ""):
@@ -449,6 +533,12 @@ class TemplateGallery:
         shutil.copyfile(rendered, target)
         self._prune_previews()
         return target
+
+    def _drop_preview(self, name: str) -> None:
+        try:
+            self.preview_file(name).unlink()
+        except OSError:
+            pass
 
     def _prune_previews(self) -> None:
         try:

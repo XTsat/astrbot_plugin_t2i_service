@@ -197,7 +197,15 @@
         "readFailed": "Could not read the template content",
         "toastCreated": "Created {name}; hit Apply to switch to it",
         "toastSaved": "Saved {name}",
-        "toastSavedApplied": "Saved {name}; hit Reapply to use the new layout"
+        "toastSavedApplied": "Saved {name}; hit Reapply to use the new layout",
+        "displayLabel": "Display name (optional, any language)",
+        "displayHint": "e.g. My daily report",
+        "delete": "Delete template",
+        "armDelete": "Click again to delete the template {name}",
+        "deleteFailed": "Delete failed, check the log for details",
+        "toastDeleted": "Deleted {name}",
+        "toastDeletedRestored": "Deleted {name}; the one shipped with AstrBot is back",
+        "toastDeletedApplied": "Deleted {name}; the plugin slot still holds a copy, so apply another template to replace it"
       },
       "toast": {
         "busy": "Another job is already running, please wait",

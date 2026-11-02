@@ -4,6 +4,8 @@
 用文件内容模拟「内置模板」与「用户自建模板」。
 """
 
+import json
+
 import pytest
 
 from t2i_plugin import template_web, templates
@@ -231,6 +233,78 @@ def test_save_overwrites_user_copy_and_marks_modified(dirs):
         gallery.save("base", "   ")
 
 
+def test_create_and_save_store_display_name(dirs):
+    gallery, _, user = dirs
+    item = gallery.create("named", title=" 我的日报  ")
+    assert item["title"] == "我的日报"
+    assert item["custom_title"] is True
+    # 显示名和模板文件分开存：文件名（AstrBot 配置里的标识）不变
+    assert (user / "named.html").is_file()
+    assert json.loads((user / "_titles.json").read_text(encoding="utf-8")) == {
+        "named": "我的日报"
+    }
+    # 编辑时可以改名
+    assert gallery.save("named", PLAIN, title="我的日报 v2")["title"] == "我的日报 v2"
+    # 清空显示名后回落到模板自带的 <title>（这里 PLAIN 没有 title，用文件名兜底）
+    assert gallery.save("named", PLAIN, title="")["title"] == "named"
+    assert gallery.describe("named")["custom_title"] is False
+    assert not (user / "_titles.json").exists()
+
+
+def test_display_name_wins_over_template_title(dirs):
+    gallery, _, _ = dirs
+    assert gallery.describe("base")["custom_title"] is False
+    gallery.save("base", RICH, title="日报卡片")
+    item = gallery.describe("base")
+    assert (item["title"], item["custom_title"]) == ("日报卡片", True)
+
+
+def test_display_name_rejects_overlong_title(dirs):
+    gallery, _, _ = dirs
+    with pytest.raises(ValueError):
+        gallery.create("toolong", title="名" * 65)
+
+
+def test_delete_removes_user_template(dirs):
+    gallery, _, user = dirs
+    gallery.create("throwaway")
+    result = gallery.delete("throwaway")
+    assert result == {"name": "throwaway", "deleted": True, "shadowed": False}
+    assert not (user / "throwaway.html").exists()
+    assert "throwaway" not in {item["name"] for item in gallery.list_templates()}
+
+
+def test_delete_user_copy_restores_builtin(dirs):
+    gallery, _, user = dirs
+    assert gallery.describe("astrbot_powershell")["modified"] is True
+    result = gallery.delete("astrbot_powershell")
+    # 删掉用户副本后内置那一版又露出来，页面据此提示「恢复到自带的那一版」
+    assert result["shadowed"] is True
+    assert gallery.describe("astrbot_powershell")["modified"] is False
+
+
+def test_delete_refuses_builtin_missing_and_slot(dirs):
+    gallery, _, user = dirs
+    with pytest.raises(ValueError):
+        gallery.delete("base")  # 只在内置目录里，删不了
+    with pytest.raises(FileNotFoundError):
+        gallery.delete("nope")
+    with pytest.raises(ValueError):
+        gallery.delete(SLOT_NAME)
+    with pytest.raises(ValueError):
+        gallery.delete("../etc/passwd")
+
+
+def test_delete_drops_preview_cache(dirs, tmp_path):
+    gallery, _, _ = dirs
+    gallery.create("cached")
+    rendered = tmp_path / "shot.jpg"
+    rendered.write_bytes(b"jpeg")
+    assert gallery.store_preview("cached", rendered).is_file()
+    gallery.delete("cached")
+    assert gallery.cached_preview("cached") is None
+
+
 def test_save_leaves_no_temp_file(dirs):
     gallery, _, user = dirs
     gallery.create("tmpcheck")
@@ -292,7 +366,7 @@ def test_web_registers_prefixed_template_routes(dirs):
     gallery, _, _ = dirs
     context = _FakeContext()
     routes = _build_api(gallery).register(context)
-    assert len(routes) == len(context.routes) == 6
+    assert len(routes) == len(context.routes) == 7
     for route, handler, methods, desc in context.routes:
         assert route.startswith("/astrbot_plugin_t2i_service/templates/")
         assert methods in (["GET"], ["POST"])
@@ -464,6 +538,58 @@ async def test_web_save_and_read_errors(dirs, monkeypatch):
     assert saved["code"] == 0
     assert saved["data"]["created"] is False
     assert gallery.describe("made")["source"] == "custom"
+
+
+@pytest.mark.skipif(
+    not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有页面 Web API"
+)
+async def test_web_create_and_save_pass_display_title(dirs, monkeypatch):
+    gallery, _, _ = dirs
+    _patch_envelope(monkeypatch)
+    api = _build_api(gallery)
+
+    monkeypatch.setattr(
+        template_web,
+        "request",
+        _FakeRequest({"name": "titled", "content": PLAIN, "title": "我的日报"}),
+    )
+    created = await api.page_create()
+    assert created["code"] == 0
+    assert created["data"]["template"]["title"] == "我的日报"
+    assert created["data"]["template"]["custom_title"] is True
+
+    monkeypatch.setattr(
+        template_web,
+        "request",
+        _FakeRequest({"name": "titled", "content": PLAIN, "title": "改名了"}),
+    )
+    saved = await api.page_save()
+    assert saved["code"] == 0
+    assert saved["data"]["template"]["title"] == "改名了"
+
+
+@pytest.mark.skipif(
+    not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有页面 Web API"
+)
+async def test_web_delete(dirs, monkeypatch):
+    gallery, _, _ = dirs
+    _patch_envelope(monkeypatch)
+    api = _build_api(gallery)
+    gallery.create("gone")
+
+    monkeypatch.setattr(template_web, "request", _FakeRequest({"name": "gone"}))
+    response = await api.page_delete()
+    assert response["code"] == 0
+    assert response["data"]["deleted"] is True
+    assert "gone" not in {item["name"] for item in gallery.list_templates()}
+
+    # 内置模板与不存在的模板：页面靠状态码区分「删不了」和「已经没了」
+    monkeypatch.setattr(template_web, "request", _FakeRequest({"name": "base"}))
+    assert (await api.page_delete())["code"] == 400
+    monkeypatch.setattr(template_web, "request", _FakeRequest({"name": "nope"}))
+    assert (await api.page_delete())["code"] == 404
+    monkeypatch.setattr(template_web, "request", _FakeRequest({}))
+    assert (await api.page_delete())["code"] == 400
 
 
 async def _slot_state() -> dict[str, object]:

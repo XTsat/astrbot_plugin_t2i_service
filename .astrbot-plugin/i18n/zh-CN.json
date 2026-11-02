@@ -197,7 +197,15 @@
         "readFailed": "读不到模板内容",
         "toastCreated": "已新建模板 {name}，可以点「应用」切过去",
         "toastSaved": "已保存 {name}",
-        "toastSavedApplied": "已保存 {name}，点「重新应用」后新的样式才会用于出图"
+        "toastSavedApplied": "已保存 {name}，点「重新应用」后新的样式才会用于出图",
+        "displayLabel": "显示名称（可选，可以写中文）",
+        "displayHint": "例如：我的群聊日报",
+        "delete": "删除模板",
+        "armDelete": "再点一次删除模板 {name}",
+        "deleteFailed": "删除失败，看日志里的详细报错",
+        "toastDeleted": "已删除 {name}",
+        "toastDeletedRestored": "已删除 {name}，恢复到 AstrBot 自带的那一版",
+        "toastDeletedApplied": "已删除 {name}，插件槽位里还留着它的副本；想换掉就应用别的模板"
       },
       "toast": {
         "busy": "已有任务在进行中，请等待完成",

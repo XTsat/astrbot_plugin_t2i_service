@@ -1044,9 +1044,15 @@ button.pick[aria-pressed="true"] {
 
 .t2i-form-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 14px;
+}
+
+/* 占位把「删除」推到最左，取消/保存在右 */
+.t2i-form-gap {
+  flex: 1;
 }
 
 @media (max-width: 640px) {
@@ -1087,6 +1093,10 @@ button.pick[aria-pressed="true"] {
 
   .t2i-form-actions {
     flex-direction: column-reverse;
+  }
+
+  .t2i-form-gap {
+    display: none;
   }
 
   .t2i-form-actions button {

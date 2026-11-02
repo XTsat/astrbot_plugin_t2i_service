@@ -52,10 +52,12 @@ const els = {
   t2iEditorForm: $("t2i-editor-form"),
   t2iEditorTitle: $("t2i-editor-title"),
   t2iEditorName: $("t2i-editor-name"),
+  t2iEditorDisplay: $("t2i-editor-display"),
   t2iEditorSourceField: $("t2i-editor-source-field"),
   t2iEditorSource: $("t2i-editor-source"),
   t2iEditorContent: $("t2i-editor-content"),
   t2iEditorError: $("t2i-editor-error"),
+  t2iEditorDelete: $("t2i-editor-delete"),
   t2iEditorCancel: $("t2i-editor-cancel"),
   t2iEditorSubmit: $("t2i-editor-submit"),
   projectPanel: $("panel-project"),
@@ -1203,9 +1205,10 @@ function bindActions() {
 const t2iQueue = [];
 let t2iQueueBusy = false;
 
-/** 模板名不是给用户看的：内置三个模板给了中文名，其余直接用模板里的标题。 */
+/** 模板名不是给用户看的：用户设过显示名就用它，内置三个模板给了中文名，其余用模板里的标题。 */
 function t2iLabel(item) {
   const fallback = (item && (item.title || item.name)) || "";
+  if (item && item.custom_title) return fallback;
   return t(`t2i.name.${item ? item.name : ""}`, fallback);
 }
 
@@ -1468,8 +1471,22 @@ async function openT2iEditor(name) {
   els.t2iEditorName.value = name || "";
   els.t2iEditorName.disabled = editing;
   els.t2iEditorSourceField.hidden = editing;
+  // 只回填用户自己设过的显示名；没设过就留空，卡片继续显示模板自带的标题
+  const current = editing
+    ? ((state.t2i && state.t2i.templates) || []).find((item) => item.name === name) || {}
+    : {};
+  if (els.t2iEditorDisplay) {
+    els.t2iEditorDisplay.value = current.custom_title ? current.title || "" : "";
+  }
+  if (els.t2iEditorDelete) {
+    // 内置模板是 AstrBot 自己的资产，删不掉；只有编辑用户自建模板时才给这一步
+    els.t2iEditorDelete.hidden = !editing || current.source !== "custom";
+    els.t2iEditorDelete.classList.remove("armed");
+  }
   els.t2iEditorContent.value = "";
   hideT2iEditorError();
+  // 编辑时正文要等接口返回，读完之前按提交只会撞上「内容不能为空」
+  els.t2iEditorSubmit.disabled = editing;
   if (typeof els.t2iEditor.showModal === "function") els.t2iEditor.showModal();
   else els.t2iEditor.setAttribute("open", "");
   if (!editing) {
@@ -1477,6 +1494,7 @@ async function openT2iEditor(name) {
     return;
   }
   const data = await apiPost("templates/read", { name });
+  els.t2iEditorSubmit.disabled = false;
   if (data && typeof data.content === "string") {
     els.t2iEditorContent.value = data.content;
     els.t2iEditorContent.focus();
@@ -1487,6 +1505,7 @@ async function openT2iEditor(name) {
 
 function closeT2iEditor() {
   if (!els.t2iEditor) return;
+  state.t2iEditing = "";
   if (typeof els.t2iEditor.close === "function") els.t2iEditor.close();
   els.t2iEditor.removeAttribute("open");
 }
@@ -1523,6 +1542,7 @@ async function submitT2iEditor() {
   const editing = Boolean(state.t2iEditing);
   const name = (els.t2iEditorName.value || "").trim();
   const content = els.t2iEditorContent.value || "";
+  const title = (els.t2iEditorDisplay ? els.t2iEditorDisplay.value || "" : "").trim();
   if (!editing && !T2I_NAME_PATTERN.test(name)) {
     // 与后端同一套规则，先在页面上拦一次，省一个来回
     showT2iEditorError(
@@ -1541,10 +1561,11 @@ async function submitT2iEditor() {
   }
   els.t2iEditorSubmit.disabled = true;
   const data = editing
-    ? await apiPost("templates/save", { name, content })
+    ? await apiPost("templates/save", { name, content, title })
     : await apiPost("templates/create", {
         name,
         content,
+        title,
         source: els.t2iEditorSource.value,
       });
   els.t2iEditorSubmit.disabled = false;
@@ -1575,6 +1596,53 @@ async function submitT2iEditor() {
       "ok",
     );
   }
+}
+
+/** 删掉用户自建模板：两步确认（插件页里 window.confirm 会被浏览器忽略）。 */
+async function deleteT2iTemplate(name, button) {
+  if (!button) return;
+  const armed = armConfirm(
+    button,
+    `t2i-delete:${name}`,
+    t("t2i.armDelete", "再点一次删除模板 {name}", { name: t2iLabel({ name }) }),
+  );
+  if (!armed) return;
+  const slot = (state.t2i && state.t2i.slot) || {};
+  const wasApplied = Boolean(slot.active && slot.source === name);
+  // 删完这条就从清单里消失了，显示名得先取下来，否则提示里只剩文件名
+  const label = t2iLabel(
+    ((state.t2i && state.t2i.templates) || []).find((item) => item.name === name) || { name },
+  );
+  button.disabled = true;
+  const data = await apiPost("templates/delete", { name });
+  button.disabled = false;
+  if (!data) {
+    toast(state.lastError || t("t2i.deleteFailed", "删除失败，看日志里的详细报错"), "err");
+    return;
+  }
+  state.t2iShots.delete(name);
+  if (state.t2iEditing === name) closeT2iEditor();
+  await loadT2iTemplates({ force: true });
+  if (wasApplied) {
+    // 槽位里存的是删除前的副本，AstrBot 照旧能出图，所以要说清「删了但还在用」
+    toast(
+      t(
+        "t2i.toastDeletedApplied",
+        "已删除 {name}，插件槽位里还留着它的副本；想换掉就应用别的模板",
+        { name: label },
+      ),
+      "ok",
+    );
+    return;
+  }
+  toast(
+    data.shadowed
+      ? t("t2i.toastDeletedRestored", "已删除 {name}，恢复到 AstrBot 自带的那一版", {
+          name: label,
+        })
+      : t("t2i.toastDeleted", "已删除 {name}", { name: label }),
+    "ok",
+  );
 }
 
 function openT2iZoom(name) {
@@ -1619,6 +1687,12 @@ function bindT2i() {
   }
   if (els.t2iCreate) {
     els.t2iCreate.addEventListener("click", () => openT2iEditor(""));
+  }
+  if (els.t2iEditorDelete) {
+    els.t2iEditorDelete.addEventListener("click", async () => {
+      if (!state.t2iEditing) return;
+      await deleteT2iTemplate(state.t2iEditing, els.t2iEditorDelete);
+    });
   }
   if (els.t2iEditorForm) {
     els.t2iEditorForm.addEventListener("submit", async (event) => {

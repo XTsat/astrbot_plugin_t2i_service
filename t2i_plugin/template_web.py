@@ -9,7 +9,8 @@
 * ``templates/apply``    —— 把模板写进槽位并写 AstrBot 的 t2i 配置；
 * ``templates/create``   —— 新建用户模板（空白 / 复制现有 / 粘贴 HTML）；
 * ``templates/save``     —— 覆盖保存用户模板的内容；
-* ``templates/read``     —— 取模板原文给页面编辑器预填。
+* ``templates/read``     —— 取模板原文给页面编辑器预填；
+* ``templates/delete``   —— 删除用户自建模板（内置模板删不了）。
 
 写 AstrBot 主配置的动作留在 ``main.py``：它才拿得到 ``Context``。
 """
@@ -101,6 +102,12 @@ class TemplateWebApi:
                 ["POST"],
                 "读取模板原文",
             ),
+            (
+                f"/{self.plugin_name}/templates/delete",
+                self.page_delete,
+                ["POST"],
+                "删除模板",
+            ),
         ]
         for route, handler, methods, desc in routes:
             try:
@@ -183,6 +190,7 @@ class TemplateWebApi:
                 name,
                 source=str(payload.get("source") or "").strip(),
                 content=str(payload.get("content") or ""),
+                title=str(payload.get("title") or ""),
             )
         except FileExistsError as exc:
             return self._fail(str(exc), status_code=409)
@@ -196,9 +204,13 @@ class TemplateWebApi:
         name = str(payload.get("name") or "").strip()
         if not name:
             return self._fail("缺少模板名")
+        title = payload.get("title")
         try:
             item = await asyncio.to_thread(
-                self.gallery.save, name, str(payload.get("content") or "")
+                self.gallery.save,
+                name,
+                str(payload.get("content") or ""),
+                title=None if title is None else str(title),
             )
         except (ValueError, OSError, UnicodeDecodeError) as exc:
             return self._fail(str(exc))
@@ -217,6 +229,20 @@ class TemplateWebApi:
         except (ValueError, OSError, UnicodeDecodeError) as exc:
             return self._fail(str(exc))
         return self._ok({"name": name, "content": content})
+
+    async def page_delete(self) -> object:
+        payload = await request.json(default={})
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            return self._fail("缺少模板名")
+        try:
+            result = await asyncio.to_thread(self.gallery.delete, name)
+        except FileNotFoundError as exc:
+            return self._fail(str(exc), status_code=404)
+        except (ValueError, OSError, UnicodeDecodeError) as exc:
+            return self._fail(str(exc))
+        logger.info(f"[t2i] 已删除模板 {name}")
+        return self._ok(result)
 
 
 def _data_url(data: str) -> str:
