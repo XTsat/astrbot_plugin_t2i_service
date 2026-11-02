@@ -856,6 +856,8 @@ function renderTemplates(grid, templates) {
   if (!grid) return;
   const tiles = (templates || []).map((tpl) => {
     const missing = tpl.missing || [];
+    // 上游只给网页分片字体的模板（如 BlueArchive）没有可下的家族：卡片只说明情况，不给按钮
+    const manual = tpl.downloadable === false;
     // 装齐了同样要把用到的家族名列出来，否则只剩「全部 N 个家族」看不出装了什么
     const missingText = tpl.installed
       ? t("template.installedAll", "全部 {count} 个家族已安装：{list}", {
@@ -877,7 +879,7 @@ function renderTemplates(grid, templates) {
       (state.jobTemplate === tpl.key ||
         (tpl.families || []).some((key) => state.jobKeys.has(key)));
     const actions = [];
-    if (!downloading) {
+    if (!downloading && !manual) {
       if (!installedAll) {
         actions.push(`<button class="primary" data-template="${escapeHtml(tpl.key)}" ${
           state.busy ? "disabled" : ""
@@ -890,18 +892,24 @@ function renderTemplates(grid, templates) {
       }
     }
     const action = actions.join("");
-    return `<div class="tile">
-      <div class="head">
-        <div class="name">${templateTitle(tpl)}</div>
-        <div class="acts">${action}</div>
-      </div>
-      <div class="meta">${escapeHtml(missingText)}</div>
+    const metaLines = manual
+      ? `<div class="meta">${escapeHtml(
+          t("template.manualOnly", "插件不提供下载：需在「概览」上传自备字体文件"),
+        )}</div>
+      <div class="meta">${escapeHtml(tpl.note || "")}</div>`
+      : `<div class="meta">${escapeHtml(missingText)}</div>
       <div class="meta">${escapeHtml(
         t("template.approx", "约 {mb} MB · {note}", {
           mb: tpl.approx_mb,
           note: tpl.note || "",
         }),
-      )}</div>
+      )}</div>`;
+    return `<div class="tile">
+      <div class="head">
+        <div class="name">${templateTitle(tpl)}</div>
+        <div class="acts">${action}</div>
+      </div>
+      ${metaLines}
       ${downloading ? jobProgressHtml() : ""}
     </div>`;
   });

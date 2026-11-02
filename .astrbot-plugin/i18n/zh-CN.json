@@ -125,6 +125,7 @@
         }
       },
       "template": {
+        "manualOnly": "插件不提供下载：需在「概览」上传自备字体文件",
         "installedAll": "全部 {count} 个家族已安装：{list}",
         "missing": "缺少：{list}",
         "approx": "约 {mb} MB · {note}",

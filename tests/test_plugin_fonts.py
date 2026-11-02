@@ -133,11 +133,44 @@ def test_catalog_matches_known_templates():
     for template in catalog["templates"]:
         # 模板引用的家族必须都在清单里，否则页面上的补齐按钮会指到不存在的项
         assert set(template["families"]) <= set(FONT_FAMILIES)
+        if not template["families"]:
+            # 没有可下载家族的模板（上游只给网页分片字体）不能被当成「已装好」
+            assert template["downloadable"] is False
+            assert template["installed"] is False
+            continue
+        assert template["downloadable"] is True
         assert template["missing"] == list(template["families"])
         assert template["installed"] is False
     upstream = catalog["upstream"]
     assert "qq_group_daily_analysis" in upstream["project"]
     assert upstream["doc"].endswith("docs/T2I_FONTS.md")
+
+
+def test_catalog_lists_upstream_blue_archive_template():
+    """对接项目清单里有的模板都要能查到；BlueArchive 只说明字体来源，不给下载。"""
+    manager = FontManager(_tmp(None), github_proxy="")
+    templates = {tpl["key"]: tpl for tpl in manager.catalog()["templates"]}
+    for key in (
+        "simple",
+        "deepseek_maid",
+        "HatsuneMiku",
+        "hack",
+        "format",
+        "maria",
+        "art_nouveau",
+        "retro_futurism",
+        "scrapbook",
+        "spring_festival",
+        "ATRI",
+        "BlueArchive",
+    ):
+        assert key in templates, key
+    blue = templates["BlueArchive"]
+    assert blue["downloadable"] is False
+    assert blue["families"] == []
+    assert "Blueaka" in blue["note"]
+    with pytest.raises(ValueError):
+        manager.start_template("BlueArchive")
 
 
 def test_catalog_marks_template_groups():

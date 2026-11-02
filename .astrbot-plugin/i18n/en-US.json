@@ -125,6 +125,7 @@
         }
       },
       "template": {
+        "manualOnly": "Not downloadable here: upload your own font files in Overview",
         "installedAll": "All {count} families installed: {list}",
         "missing": "Missing: {list}",
         "approx": "About {mb} MB · {note}",

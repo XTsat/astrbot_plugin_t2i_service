@@ -420,6 +420,17 @@ FONT_TEMPLATES: dict[str, FontTemplate] = {
             "含等宽版，代码块要用",
             name_en="ATRI",
         ),
+        # 上游这个模板只用 Blueaka，而它只有按字符拆分的网页分片字体（.woff2），
+        # 没有可直接安装的桌面字体包，塞进 fontconfig 也用不上——所以列出来但不给下载按钮
+        FontTemplate(
+            "BlueArchive",
+            "碧蓝档案",
+            (),
+            "上游只用 Blueaka 一款字体（本地模式认 BlueakaBeta2GBK / BlueakaBeta2GBK DemiBold），"
+            "目前只有按字符拆分的网页字体、没有可直接安装的桌面字体包，插件不提供下载；"
+            "要本地使用请自备授权字体文件在「概览」上传，或让它继续用上游的在线字体",
+            name_en="BlueArchive",
+        ),
         FontTemplate(
             "diary_card",
             "日记卡（本插件模板）",
@@ -940,6 +951,9 @@ class FontManager:
                 key for key in template.families if not self.family_installed(key, installed)
             ]
             size = sum(FONT_FAMILIES[key].approx_mb for key in template.families)
+            # 空 families 的模板（上游只给网页分片字体）没有可下的东西：别让页面按
+            # 「0 个家族、一个不缺」把它显示成已装好，也不给下载按钮
+            downloadable = bool(template.families)
             templates.append(
                 {
                     "key": template.key,
@@ -950,7 +964,8 @@ class FontManager:
                     "families": list(template.families),
                     "family_names": [FONT_FAMILIES[key].name for key in template.families],
                     "approx_mb": round(size, 1),
-                    "installed": not missing,
+                    "downloadable": downloadable,
+                    "installed": downloadable and not missing,
                     "missing": missing,
                 }
             )
@@ -1137,6 +1152,10 @@ class FontManager:
         template = FONT_TEMPLATES.get(template_key)
         if template is None:
             raise ValueError(f"未知模板：{template_key}")
+        if not template.families:
+            raise ValueError(
+                f"模板 {template.name_en or template.key} 没有可下载的字体，请自备字体文件上传"
+            )
         job = self.start_families(list(template.families))
         job.kind = "template"
         job.label = f"模板 {template.name_en or template.key}：" + job.label
