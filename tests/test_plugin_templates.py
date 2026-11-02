@@ -170,6 +170,46 @@ def test_preview_cache_follows_content_hash(dirs, tmp_path):
     assert gallery.cached_preview("base") is None
 
 
+def test_sample_text_defaults_saves_and_resets(dirs):
+    gallery, _, _ = dirs
+    assert gallery.sample_text() == templates.DEFAULT_SAMPLE_TEXT
+    assert gallery.sample_payload()["custom"] is False
+
+    payload = gallery.save_sample_text("## 我的样例\n\n正文")
+    assert payload["custom"] is True
+    assert payload["text"] == "## 我的样例\n\n正文"
+    assert gallery.sample_data()["text"] == payload["text"]
+
+    # 只留空白等于没改过：回落到内置默认，而不是渲一张空卡片
+    (gallery.data_dir / "t2i-preview-sample.md").write_text("   \n", encoding="utf-8")
+    assert gallery.sample_text() == templates.DEFAULT_SAMPLE_TEXT
+
+    gallery.save_sample_text("临时文本")
+    restored = gallery.reset_sample_text()
+    assert restored["custom"] is False
+    assert restored["text"] == templates.DEFAULT_SAMPLE_TEXT
+
+
+def test_sample_text_rejects_empty_and_oversized(dirs):
+    gallery, _, _ = dirs
+    with pytest.raises(ValueError):
+        gallery.save_sample_text("  \n ")
+    with pytest.raises(ValueError):
+        gallery.save_sample_text("x" * (templates.MAX_SAMPLE_CHARS + 1))
+
+
+def test_preview_cache_follows_sample_text(dirs, tmp_path):
+    gallery, _, _ = dirs
+    rendered = tmp_path / "rendered.jpg"
+    rendered.write_bytes(b"\xff\xd8\xff\xe0jpeg")
+    stored = gallery.store_preview("base", rendered)
+    assert gallery.cached_preview("base") == stored
+
+    # 预览图是照着样例文本渲的：文本一改，旧图同样不该再命中
+    gallery.save_sample_text("## 换一段样例")
+    assert gallery.cached_preview("base") is None
+
+
 def test_preview_cache_prunes_old_files(dirs, tmp_path):
     gallery, _, user = dirs
     rendered = tmp_path / "rendered.jpg"
@@ -372,7 +412,7 @@ def test_web_registers_prefixed_template_routes(dirs):
     gallery, _, _ = dirs
     context = _FakeContext()
     routes = _build_api(gallery).register(context)
-    assert len(routes) == len(context.routes) == 8
+    assert len(routes) == len(context.routes) == 10
     for route, handler, methods, desc in context.routes:
         assert route.startswith("/astrbot_plugin_t2i_service/templates/")
         assert methods in (["GET"], ["POST"])
@@ -490,6 +530,42 @@ async def test_web_draft_preview_rejects_empty_content(dirs, monkeypatch):
     response = await api.page_preview_draft()
     assert response["code"] == 400
     assert "不能为空" in response["message"]
+
+
+@pytest.mark.skipif(
+    not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
+)
+async def test_web_list_includes_sample_text(dirs, monkeypatch):
+    gallery, _, _ = dirs
+    _patch_envelope(monkeypatch)
+    api = _build_api(gallery)
+    response = await api.page_list()
+    sample = response["data"]["sample"]
+    assert sample["text"] == templates.DEFAULT_SAMPLE_TEXT
+    assert sample["custom"] is False
+
+
+@pytest.mark.skipif(
+    not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
+)
+async def test_web_sample_save_and_reset(dirs, monkeypatch):
+    gallery, _, _ = dirs
+    _patch_envelope(monkeypatch)
+    api = _build_api(gallery)
+
+    monkeypatch.setattr(template_web, "request", _FakeRequest({"text": "## 面板里改的"}))
+    saved = await api.page_sample_save()
+    assert saved["code"] == 0
+    assert saved["data"]["sample"]["text"] == "## 面板里改的"
+    assert saved["data"]["sample"]["custom"] is True
+
+    monkeypatch.setattr(template_web, "request", _FakeRequest({"text": "   "}))
+    rejected = await api.page_sample_save()
+    assert rejected["code"] == 400
+
+    restored = await api.page_sample_reset()
+    assert restored["code"] == 0
+    assert restored["data"]["sample"]["custom"] is False
 
 
 @pytest.mark.skipif(

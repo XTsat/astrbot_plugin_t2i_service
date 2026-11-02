@@ -33,9 +33,10 @@ SLOT_NAME = "t2i_service_plugin"
 # 预览图按内容哈希命名，模板一改就换名字；只留最近这么多张，避免越积越多
 PREVIEW_KEEP = 24
 
-# 预览用的样例文本：标题 / 列表 / 引用 / 表格 / 代码块 / 行内代码都覆盖到，
-# 这样模板之间的排版差异一眼能看出来（模板自己用 marked 渲染 Markdown）
-SAMPLE_TEXT = """## 群聊日报 · 2026-11-02
+# 预览用的默认样例文本：标题 / 列表 / 引用 / 表格 / 代码块 / 行内代码都覆盖到，
+# 这样模板之间的排版差异一眼能看出来（模板自己用 marked 渲染 Markdown）。
+# 面板里可以改成自己的文字，改过之后存在 _SAMPLE_FILE 里，这里的默认值不再生效。
+DEFAULT_SAMPLE_TEXT = """## 群聊日报 · 2026-11-02
 
 今天群里最热闹的三件事：
 
@@ -208,6 +209,11 @@ _VAR_RE = re.compile(r"\{\{\s*([A-Za-z_]\w*)")
 
 # 模板名会被直接拼成文件名，也存在于 AstrBot 的模板清单里，所以只放行这一小撮字符
 _NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
+
+# 面板里改过的预览样例文本放这里；文件不存在/内容为空表示「用内置默认」
+_SAMPLE_FILE = "t2i-preview-sample.md"
+# 样例文本只给人看排版，几千字足够；挡住误贴整篇文章把预览请求撑爆
+MAX_SAMPLE_CHARS = 16 * 1024
 
 # 面板上的显示名单独存一份：模板文件名是标识（AstrBot 配置里指的就是它），
 # 改文件名会连带把已应用的设置指空，所以显示名不能写进文件名。
@@ -506,15 +512,69 @@ class TemplateGallery:
             temp.replace(target)
         return {"slot": SLOT_NAME, "source": name, "changed": changed}
 
+    # ------------------------------------------------------------ 预览样例文本
+
+    @property
+    def sample_text_path(self) -> Path:
+        return self.data_dir / _SAMPLE_FILE
+
+    def _saved_sample_text(self) -> str | None:
+        """用户改过的样例文本；文件不存在、只有空白或读失败都算没改过。
+
+        写文件时会补一个换行结尾，读回来统一去掉首尾空白：面板文本框里不该多一个空行，
+        Markdown 样例的排版也不受这点空白影响。
+        """
+        try:
+            text = self.sample_text_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+        return text.strip() or None
+
+    def sample_text(self) -> str:
+        """当前预览用的样例文本：改过就用用户的，否则用内置默认。"""
+        return self._saved_sample_text() or DEFAULT_SAMPLE_TEXT
+
+    def sample_payload(self) -> dict[str, object]:
+        """给面板的状态：当前值、默认值、是否被改过（「恢复默认」按钮据此置灰）。"""
+        saved = self._saved_sample_text()
+        return {
+            "text": saved or DEFAULT_SAMPLE_TEXT,
+            "default": DEFAULT_SAMPLE_TEXT,
+            "custom": saved is not None,
+        }
+
+    def save_sample_text(self, text: str) -> dict[str, object]:
+        """存下用户改的样例文本；内容为空说明他想清空，直接拒绝并让他点「恢复默认」。"""
+        value = (text or "").strip()
+        if not value:
+            raise ValueError("样例文本不能为空，想用回默认就点「恢复默认」")
+        if len(value) > MAX_SAMPLE_CHARS:
+            raise ValueError(f"样例文本太长（超过 {MAX_SAMPLE_CHARS // 1024} KB）")
+        self._write(self.sample_text_path, value + "\n")
+        return self.sample_payload()
+
+    def reset_sample_text(self) -> dict[str, object]:
+        """删掉自定义文件即可回到内置默认；本来就没有也不算错。"""
+        try:
+            self.sample_text_path.unlink()
+        except OSError:
+            pass
+        return self.sample_payload()
+
     # ------------------------------------------------------------ 预览图缓存
 
     def sample_data(self) -> dict[str, str]:
         """渲染预览时的模板变量，与 AstrBot 真实渲染时给的一致。"""
-        return {"text": SAMPLE_TEXT, "version": self.plugin_version or "v0.0.0"}
+        return {"text": self.sample_text(), "version": self.plugin_version or "v0.0.0"}
 
     def preview_file(self, name: str) -> Path:
-        """预览图路径：按模板内容哈希命名，内容没变就一直命中缓存。"""
-        return self.preview_dir / f"{self._hash(self.read(name))[:16]}.jpg"
+        """预览图路径：模板内容 + 当前样例文本一起参与哈希。
+
+        只哈希模板会让「改了样例文本、卡片还是旧文字」这种局面出现，而预览图恰恰是
+        照着样例文本渲的，所以两样任一改动都得换文件名重渲。
+        """
+        digest = self._hash(self.read(name) + "\x00" + self.sample_text())
+        return self.preview_dir / f"{digest[:16]}.jpg"
 
     def cached_preview(self, name: str) -> Path | None:
         try:

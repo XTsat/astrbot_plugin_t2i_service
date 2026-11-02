@@ -11,7 +11,8 @@
 * ``templates/create``   —— 新建用户模板（空白 / 复制现有 / 粘贴 HTML）；
 * ``templates/save``     —— 覆盖保存用户模板的内容；
 * ``templates/read``     —— 取模板原文给页面编辑器预填；
-* ``templates/delete``   —— 删除用户自建模板（内置模板删不了）。
+* ``templates/delete``   —— 删除用户自建模板（内置模板删不了）；
+* ``templates/sample_save`` / ``templates/sample_reset`` —— 改预览用的样例文本 / 恢复默认。
 
 写 AstrBot 主配置的动作留在 ``main.py``：它才拿得到 ``Context``。
 """
@@ -122,6 +123,18 @@ class TemplateWebApi:
                 ["POST"],
                 "删除模板",
             ),
+            (
+                f"/{self.plugin_name}/templates/sample_save",
+                self.page_sample_save,
+                ["POST"],
+                "保存预览样例文本",
+            ),
+            (
+                f"/{self.plugin_name}/templates/sample_reset",
+                self.page_sample_reset,
+                ["POST"],
+                "恢复默认样例文本",
+            ),
         ]
         for route, handler, methods, desc in routes:
             try:
@@ -154,7 +167,15 @@ class TemplateWebApi:
         except Exception as exc:  # noqa: BLE001 - 页面不该因为磁盘异常白屏
             logger.warning(f"[t2i] 读取模板清单失败：{exc}")
             return self._fail(f"读取模板清单失败：{exc}", status_code=500)
-        return self._ok({"templates": templates, "slot": slot, "page_api": True})
+        sample = await asyncio.to_thread(self.gallery.sample_payload)
+        return self._ok(
+            {
+                "templates": templates,
+                "slot": slot,
+                "sample": sample,
+                "page_api": True,
+            }
+        )
 
     async def page_preview(self) -> object:
         payload = await request.json(default={})
@@ -265,6 +286,25 @@ class TemplateWebApi:
         except (ValueError, OSError, UnicodeDecodeError) as exc:
             return self._fail(str(exc))
         return self._ok({"name": name, "content": content})
+
+    async def page_sample_save(self) -> object:
+        payload = await request.json(default={})
+        try:
+            sample = await asyncio.to_thread(
+                self.gallery.save_sample_text, str(payload.get("text") or "")
+            )
+        except (ValueError, OSError) as exc:
+            return self._fail(str(exc))
+        logger.info("[t2i] 已更新预览样例文本")
+        return self._ok({"sample": sample})
+
+    async def page_sample_reset(self) -> object:
+        try:
+            sample = await asyncio.to_thread(self.gallery.reset_sample_text)
+        except OSError as exc:  # pragma: no cover - 删除失败极少见，仍要回给页面
+            return self._fail(f"恢复默认失败：{exc}", status_code=500)
+        logger.info("[t2i] 预览样例文本已恢复默认")
+        return self._ok({"sample": sample})
 
     async def page_delete(self) -> object:
         payload = await request.json(default={})

@@ -73,6 +73,7 @@ Which HTML template AstrBot uses to turn long text into an image is a config val
 - **Name the card yourself**: fill in **Display name** when creating or editing and the card shows that name (any language); it is stored apart from the file name, so renaming the card never disturbs what AstrBot already uses, and leaving it empty falls back to the template's own title.
 - **Delete what you no longer need**: open **Edit** on a custom template — **Delete** sits at the bottom left of that dialog (click twice to confirm). The ones shipped with AstrBot cannot be deleted — only your own copy in `data/t2i_templates/`, and removing that copy brings the stock version back.
 - **Look before you switch**: **Re-render** on a card redraws its preview from the current template content, so an edited template shows its new look right away.
+- **Change the text shown in previews**: **Preview sample text** at the bottom of the **T2I templates** tab replaces the Markdown used by the preview renders — put in a message you actually send (headings, lists, tables, code blocks all work), save, and every card re-renders with it; **Restore default** brings the built-in sample back. It only affects previews; real output still renders the incoming message.
 
 ## Configuration
 

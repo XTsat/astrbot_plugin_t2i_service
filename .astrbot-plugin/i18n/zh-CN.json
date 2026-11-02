@@ -212,7 +212,19 @@
         "deleteFailed": "删除失败，看日志里的详细报错",
         "toastDeleted": "已删除 {name}",
         "toastDeletedRestored": "已删除 {name}，恢复到 AstrBot 自带的那一版",
-        "toastDeletedApplied": "已删除 {name}，插件槽位里还留着它的副本；想换掉就应用别的模板"
+        "toastDeletedApplied": "已删除 {name}，插件槽位里还留着它的副本；想换掉就应用别的模板",
+        "sample": {
+          "title": "预览用样例文本",
+          "summary": "卡片效果图里显示的那段文字",
+          "label": "样例文本（Markdown）",
+          "hint": "保存后所有模板卡片会按这段文字重新出图；它只影响预览，不影响真实出图的内容。",
+          "reset": "恢复默认",
+          "save": "保存样例",
+          "empty": "样例文本不能为空，想用回默认就点「恢复默认」",
+          "saveFailed": "保存样例文本失败，看日志里的详细报错",
+          "saved": "已保存样例文本，模板卡片正在按新文字重渲",
+          "resetDone": "已恢复默认样例文本"
+        }
       },
       "toast": {
         "busy": "已有任务在进行中，请等待完成",

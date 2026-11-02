@@ -247,10 +247,47 @@
           </div>
         </section>
 
+        <!-- 预览样例文本：卡片效果图就是拿这段 Markdown 渲的，所以放面板里直接改 -->
+        <details class="card t2i-sample">
+          <summary>
+            <span data-i18n="t2i.sample.title">预览用样例文本</span>
+            <span class="muted small" data-i18n="t2i.sample.summary">
+              卡片效果图里显示的那段文字
+            </span>
+          </summary>
+          <label class="t2i-field">
+            <span data-i18n="t2i.sample.label">样例文本（Markdown）</span>
+            <textarea id="t2i-sample-text" rows="10" spellcheck="false"></textarea>
+          </label>
+          <p class="muted small" data-i18n="t2i.sample.hint">
+            保存后所有模板卡片会按这段文字重新出图；它只影响预览，不影响真实出图的内容。
+          </p>
+          <div class="t2i-form-actions">
+            <button
+              class="ghost"
+              id="btn-sample-reset"
+              type="button"
+              data-i18n="t2i.sample.reset"
+            >
+              恢复默认
+            </button>
+            <span class="t2i-form-gap"></span>
+            <button
+              class="primary"
+              id="btn-sample-save"
+              type="button"
+              data-i18n="t2i.sample.save"
+            >
+              保存样例
+            </button>
+          </div>
+        </details>
+
         <div class="t2i-grid" id="t2i-grid"></div>
         <p class="muted small" id="t2i-empty" data-i18n="t2i.empty" hidden>
           没有找到可用的模板。
         </p>
+
       </div>
 
       <div class="panel" id="panel-upstream" role="tabpanel" aria-labelledby="tab-upstream" hidden>

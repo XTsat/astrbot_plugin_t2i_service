@@ -567,6 +567,41 @@ button.danger:hover:not(:disabled) {
   color: var(--danger);
 }
 
+/* 预览样例文本：折叠起来放，别把模板卡片挤下去；展开后是一块可以直接编辑的文本框 */
+.t2i-sample > summary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  cursor: pointer;
+  font-weight: 600;
+  /* summary 一旦 flex 就丢掉浏览器自带的三角，这里自己补一个，否则看不出能展开 */
+  list-style: none;
+}
+
+.t2i-sample > summary::-webkit-details-marker {
+  display: none;
+}
+
+.t2i-sample > summary::before {
+  content: "▸";
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.t2i-sample[open] > summary::before {
+  content: "▾";
+}
+
+.t2i-sample[open] > summary {
+  margin-bottom: 10px;
+}
+
+.t2i-sample textarea {
+  min-height: 140px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 /* 两步确认的待确认态：按钮填红，明确下一次点就是真删 */
 button.armed,
 button.armed:hover:not(:disabled) {

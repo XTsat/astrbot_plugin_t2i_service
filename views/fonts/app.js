@@ -63,6 +63,9 @@ const els = {
   t2iEditorPreview: $("t2i-editor-preview"),
   t2iEditorPreviewBody: $("t2i-editor-preview-body"),
   t2iEditorPreviewBtn: $("t2i-editor-preview-btn"),
+  t2iSampleText: $("t2i-sample-text"),
+  btnSampleSave: $("btn-sample-save"),
+  btnSampleReset: $("btn-sample-reset"),
   t2iEditorPreviewClose: $("t2i-editor-preview-close"),
   projectPanel: $("panel-project"),
 };
@@ -89,6 +92,9 @@ const state = {
   t2iRestart: false,
   // 编辑器当前编辑的模板名；空串表示「新建」
   t2iEditing: "",
+  // 预览样例文本的本地编辑态：用户改了还没保存时，别被后台刷新覆盖
+  t2iSample: null,
+  t2iSampleDirty: false,
   jobSig: "",
 };
 
@@ -1452,6 +1458,7 @@ async function loadT2iTemplates({ force = false } = {}) {
       return;
     }
     state.t2i = { templates: data.templates || [], slot: data.slot || {} };
+    syncT2iSample(data.sample);
     renderT2i();
     for (const item of state.t2i.templates) {
       const shot = state.t2iShots.get(item.name);
@@ -1461,6 +1468,60 @@ async function loadT2iTemplates({ force = false } = {}) {
   } finally {
     state.t2iLoading = false;
   }
+}
+
+/** 把后端给的样例文本状态灌进面板；用户正在改的时候不覆盖他的输入。 */
+function syncT2iSample(sample) {
+  if (!sample) return;
+  state.t2iSample = sample;
+  if (els.t2iSampleText && !state.t2iSampleDirty) {
+    els.t2iSampleText.value = sample.text || "";
+  }
+  if (els.btnSampleReset) els.btnSampleReset.disabled = !sample.custom;
+}
+
+/** 保存样例文本后所有预览图都不再代表新文字，清掉本地缓存重渲一遍。 */
+async function refreshT2iShots() {
+  state.t2iShots.clear();
+  await loadT2iTemplates({ force: true });
+}
+
+async function saveT2iSample() {
+  if (!els.t2iSampleText) return;
+  const text = els.t2iSampleText.value || "";
+  if (!text.trim()) {
+    toast(t("t2i.sample.empty", "样例文本不能为空，想用回默认就点「恢复默认」"), "err");
+    return;
+  }
+  if (els.btnSampleSave) els.btnSampleSave.disabled = true;
+  const data = await apiPost("templates/sample_save", { text });
+  if (els.btnSampleSave) els.btnSampleSave.disabled = false;
+  if (!data) {
+    toast(
+      state.lastError || t("t2i.sample.saveFailed", "保存样例文本失败，看日志里的详细报错"),
+      "err",
+    );
+    return;
+  }
+  state.t2iSampleDirty = false;
+  syncT2iSample(data.sample);
+  await refreshT2iShots();
+  toast(t("t2i.sample.saved", "已保存样例文本，模板卡片正在按新文字重渲"), "ok");
+}
+
+async function resetT2iSample() {
+  if (!els.btnSampleReset) return;
+  els.btnSampleReset.disabled = true;
+  const data = await apiPost("templates/sample_reset", {});
+  if (!data) {
+    els.btnSampleReset.disabled = false;
+    toast(state.lastError || t("t2i.sample.saveFailed", "保存样例文本失败，看日志里的详细报错"), "err");
+    return;
+  }
+  state.t2iSampleDirty = false;
+  syncT2iSample(data.sample);
+  await refreshT2iShots();
+  toast(t("t2i.sample.resetDone", "已恢复默认样例文本"), "ok");
 }
 
 async function applyT2iTemplate(name, button) {
@@ -1791,6 +1852,21 @@ function bindT2i() {
   }
   if (els.t2iCreate) {
     els.t2iCreate.addEventListener("click", () => openT2iEditor(""));
+  }
+  if (els.t2iSampleText) {
+    els.t2iSampleText.addEventListener("input", () => {
+      state.t2iSampleDirty = true;
+    });
+  }
+  if (els.btnSampleSave) {
+    els.btnSampleSave.addEventListener("click", () => {
+      saveT2iSample();
+    });
+  }
+  if (els.btnSampleReset) {
+    els.btnSampleReset.addEventListener("click", () => {
+      resetT2iSample();
+    });
   }
   if (els.t2iEditorDelete) {
     els.t2iEditorDelete.addEventListener("click", async () => {
