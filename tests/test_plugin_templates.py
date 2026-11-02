@@ -1,7 +1,7 @@
 """文转图模板：清单合并、来源判定、槽位写入与页面接口。
 
-模板目录走的是 AstrBot 的路径助手，测试里把两个目录换成临时目录，
-用文件内容模拟「内置模板」与「用户自建模板」。
+模板目录走的是 AstrBot 的路径助手，测试里把三处目录换成临时目录，
+用文件内容模拟「AstrBot 内置模板」「插件自带模板」与「用户自建模板」。
 """
 
 import json
@@ -32,35 +32,45 @@ PLAIN = """<html><body><textarea>{{ text }}</textarea></body></html>"""
 
 @pytest.fixture()
 def dirs(tmp_path, monkeypatch):
-    """两个模板目录 + 一个 TemplateGallery；返回 (gallery, builtin_dir, user_dir)。"""
+    """三个模板目录 + 一个 TemplateGallery；返回 (gallery, builtin, user, plugin)。"""
     builtin = tmp_path / "builtin"
+    plugin = tmp_path / "plugin"
     user = tmp_path / "user"
-    builtin.mkdir()
-    user.mkdir()
+    for directory in (builtin, plugin, user):
+        directory.mkdir()
     (builtin / "base.html").write_text(RICH, encoding="utf-8")
     (builtin / "astrbot_powershell.html").write_text(PLAIN, encoding="utf-8")
+    (builtin / "shared.html").write_text(
+        PLAIN.replace("{{ text }}", "{{ text }} 内置版"), encoding="utf-8"
+    )
     # 用户目录里的同名副本改了内容，AstrBot 会拿它覆盖内置模板
     (user / "astrbot_powershell.html").write_text(
         PLAIN.replace("{{ text }}", "{{ text }} 改过的"), encoding="utf-8"
     )
     (user / "自建模板.html").write_text(PLAIN, encoding="utf-8")
+    # 插件自带：一份独有的，一份与内置同名的（同名的以插件那份为准）
+    (plugin / "plugin_card.html").write_text(RICH, encoding="utf-8")
+    (plugin / "shared.html").write_text(
+        PLAIN.replace("{{ text }}", "{{ text }} 插件版"), encoding="utf-8"
+    )
     monkeypatch.setattr(templates, "builtin_template_dir", lambda: builtin)
+    monkeypatch.setattr(templates, "plugin_template_dir", lambda: plugin)
     monkeypatch.setattr(templates, "user_template_dir", lambda: user)
     gallery = TemplateGallery(tmp_path / "data", plugin_version="v1.2.1")
-    return gallery, builtin, user
+    return gallery, builtin, user, plugin
 
 
 # ---------------------------------------------------------------- 清单与解析
 
 
-def test_list_templates_merges_both_dirs(dirs):
-    gallery, _, _ = dirs
+def test_list_templates_merges_three_dirs(dirs):
+    gallery, *_ = dirs
     names = {item["name"] for item in gallery.list_templates()}
-    assert names == {"base", "astrbot_powershell", "自建模板"}
+    assert names == {"base", "astrbot_powershell", "shared", "plugin_card", "自建模板"}
 
 
 def test_list_templates_hides_slot_and_marks_applied(dirs):
-    gallery, _, user = dirs
+    gallery, _, user, _ = dirs
     (user / f"{SLOT_NAME}.html").write_text(RICH, encoding="utf-8")
     items = gallery.list_templates()
     assert SLOT_NAME not in {item["name"] for item in items}
@@ -69,7 +79,7 @@ def test_list_templates_hides_slot_and_marks_applied(dirs):
 
 
 def test_describe_reads_title_description_and_variables(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     item = gallery.describe("base")
     # 标题里的 {{ version }} 对用户没有意义，展示时去掉
     assert item["title"] == "群聊日报"
@@ -82,7 +92,7 @@ def test_describe_reads_title_description_and_variables(dirs):
 
 
 def test_describe_falls_back_to_name_without_title(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     item = gallery.describe("自建模板")
     assert item["title"] == "自建模板"
     assert item["description"] == ""
@@ -91,14 +101,45 @@ def test_describe_falls_back_to_name_without_title(dirs):
 
 
 def test_describe_marks_modified_user_copy(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     item = gallery.describe("astrbot_powershell")
     assert item["source"] == "builtin"
     assert item["modified"] is True
 
 
+def test_describe_reports_plugin_source(dirs):
+    gallery, *_ = dirs
+    item = gallery.describe("plugin_card")
+    assert item["source"] == "plugin"
+    assert item["modified"] is False
+
+
+def test_plugin_template_shadows_builtin_of_same_name(dirs):
+    gallery, *_ = dirs
+    assert "插件版" in gallery.read("shared")
+    # 来源看自带版本落在哪一层：插件那份盖住了同名内置模板
+    assert gallery.describe("shared")["source"] == "plugin"
+
+
+def test_user_copy_of_plugin_template_keeps_plugin_source(dirs):
+    gallery, _, user, _ = dirs
+    gallery.save("plugin_card", PLAIN)
+    item = gallery.describe("plugin_card")
+    # 改过之后内容在用户目录，但它仍然是插件给的那套模板，不能报成自建模板
+    assert item["source"] == "plugin"
+    assert item["modified"] is True
+
+
+def test_missing_plugin_dir_is_ignored(dirs, monkeypatch, tmp_path):
+    gallery, *_ = dirs
+    monkeypatch.setattr(templates, "plugin_template_dir", lambda: tmp_path / "nope")
+    names = {item["name"] for item in gallery.list_templates()}
+    assert "base" in names
+    assert "plugin_card" not in names
+
+
 def test_read_prefers_user_dir_and_rejects_bad_names(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     assert "改过的" in gallery.read("astrbot_powershell")
     for bad in ("", "../etc/passwd", "a/b", "a\\b"):
         with pytest.raises(ValueError):
@@ -108,7 +149,7 @@ def test_read_prefers_user_dir_and_rejects_bad_names(dirs):
 
 
 def test_sample_data_matches_astrbot_render_variables(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     data = gallery.sample_data()
     assert set(data) == {"text", "version"}
     assert data["version"] == "v1.2.1"
@@ -119,7 +160,7 @@ def test_sample_data_matches_astrbot_render_variables(dirs):
 
 
 def test_apply_writes_slot_and_tracks_source(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     result = gallery.apply("base")
     assert result["slot"] == SLOT_NAME
     assert result["source"] == "base"
@@ -132,7 +173,7 @@ def test_apply_writes_slot_and_tracks_source(dirs):
 
 
 def test_apply_leaves_no_temp_file(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     gallery.apply("base")
     assert sorted(path.name for path in gallery.user_dir.glob("*")) == [
         "astrbot_powershell.html",
@@ -142,13 +183,13 @@ def test_apply_leaves_no_temp_file(dirs):
 
 
 def test_applied_source_empty_when_slot_hand_edited(dirs):
-    gallery, _, user = dirs
+    gallery, _, user, _ = dirs
     (user / f"{SLOT_NAME}.html").write_text("<html>手改的内容</html>", encoding="utf-8")
     assert gallery.applied_source() == ""
 
 
 def test_applied_source_empty_without_slot(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     assert gallery.applied_source() == ""
 
 
@@ -156,7 +197,7 @@ def test_applied_source_empty_without_slot(dirs):
 
 
 def test_preview_cache_follows_content_hash(dirs, tmp_path):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     rendered = tmp_path / "rendered.jpg"
     rendered.write_bytes(b"\xff\xd8\xff\xe0jpeg")
     assert gallery.cached_preview("base") is None
@@ -171,7 +212,7 @@ def test_preview_cache_follows_content_hash(dirs, tmp_path):
 
 
 def test_sample_text_defaults_saves_and_resets(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     assert gallery.sample_text() == templates.DEFAULT_SAMPLE_TEXT
     assert gallery.sample_payload()["custom"] is False
 
@@ -191,7 +232,7 @@ def test_sample_text_defaults_saves_and_resets(dirs):
 
 
 def test_sample_text_rejects_empty_and_oversized(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     with pytest.raises(ValueError):
         gallery.save_sample_text("  \n ")
     with pytest.raises(ValueError):
@@ -199,7 +240,7 @@ def test_sample_text_rejects_empty_and_oversized(dirs):
 
 
 def test_preview_cache_follows_sample_text(dirs, tmp_path):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     rendered = tmp_path / "rendered.jpg"
     rendered.write_bytes(b"\xff\xd8\xff\xe0jpeg")
     stored = gallery.store_preview("base", rendered)
@@ -211,7 +252,7 @@ def test_preview_cache_follows_sample_text(dirs, tmp_path):
 
 
 def test_preview_cache_prunes_old_files(dirs, tmp_path):
-    gallery, _, user = dirs
+    gallery, _, user, _ = dirs
     rendered = tmp_path / "rendered.jpg"
     rendered.write_bytes(b"\xff\xd8\xff\xe0jpeg")
     for index in range(PREVIEW_KEEP + 3):
@@ -227,7 +268,7 @@ def test_preview_cache_prunes_old_files(dirs, tmp_path):
 
 
 def test_create_writes_blank_scaffold(dirs):
-    gallery, _, user = dirs
+    gallery, _, user, _ = dirs
     item = gallery.create("my_style")
     saved = (user / "my_style.html").read_text(encoding="utf-8")
     # 空白模板要能直接出图：带上 AstrBot 注入的正文变量
@@ -238,13 +279,13 @@ def test_create_writes_blank_scaffold(dirs):
 
 
 def test_create_copies_existing_template(dirs):
-    gallery, _, user = dirs
+    gallery, _, user, _ = dirs
     gallery.create("copy_of_base", source="base")
     assert (user / "copy_of_base.html").read_text(encoding="utf-8") == RICH
 
 
 def test_create_prefers_pasted_content_over_copy(dirs):
-    gallery, _, user = dirs
+    gallery, _, user, _ = dirs
     gallery.create("pasted", source="base", content=PLAIN + "\n<!-- pasted -->")
     saved = (user / "pasted.html").read_text(encoding="utf-8")
     assert "pasted" in saved
@@ -252,19 +293,21 @@ def test_create_prefers_pasted_content_over_copy(dirs):
 
 
 def test_create_rejects_bad_and_taken_names(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     for bad in ("../evil", "has space", "", SLOT_NAME, "-leading"):
         with pytest.raises(ValueError):
             gallery.create(bad)
     with pytest.raises(FileExistsError):
         gallery.create("base")  # 内置同名也算已存在
+    with pytest.raises(FileExistsError):
+        gallery.create("plugin_card")  # 插件自带同名同样算已存在
     gallery.create("dup")
     with pytest.raises(FileExistsError):
         gallery.create("dup")
 
 
 def test_save_overwrites_user_copy_and_marks_modified(dirs):
-    gallery, _, user = dirs
+    gallery, _, user, _ = dirs
     gallery.save("base", "<html>{{ text }} saved</html>")
     assert "saved" in (user / "base.html").read_text(encoding="utf-8")
     # 改过内置模板后，清单里要能看出这一份是本地改过的
@@ -274,7 +317,7 @@ def test_save_overwrites_user_copy_and_marks_modified(dirs):
 
 
 def test_create_and_save_store_display_name(dirs):
-    gallery, _, user = dirs
+    gallery, _, user, _ = dirs
     item = gallery.create("named", title=" 我的日报  ")
     assert item["title"] == "我的日报"
     assert item["custom_title"] is True
@@ -292,7 +335,7 @@ def test_create_and_save_store_display_name(dirs):
 
 
 def test_display_name_wins_over_template_title(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     assert gallery.describe("base")["custom_title"] is False
     gallery.save("base", RICH, title="日报卡片")
     item = gallery.describe("base")
@@ -300,13 +343,13 @@ def test_display_name_wins_over_template_title(dirs):
 
 
 def test_display_name_rejects_overlong_title(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     with pytest.raises(ValueError):
         gallery.create("toolong", title="名" * 65)
 
 
 def test_delete_removes_user_template(dirs):
-    gallery, _, user = dirs
+    gallery, _, user, _ = dirs
     gallery.create("throwaway")
     result = gallery.delete("throwaway")
     assert result == {"name": "throwaway", "deleted": True, "shadowed": False}
@@ -315,7 +358,7 @@ def test_delete_removes_user_template(dirs):
 
 
 def test_delete_user_copy_restores_builtin(dirs):
-    gallery, _, user = dirs
+    gallery, _, user, _ = dirs
     assert gallery.describe("astrbot_powershell")["modified"] is True
     result = gallery.delete("astrbot_powershell")
     # 删掉用户副本后内置那一版又露出来，页面据此提示「恢复到自带的那一版」
@@ -323,8 +366,23 @@ def test_delete_user_copy_restores_builtin(dirs):
     assert gallery.describe("astrbot_powershell")["modified"] is False
 
 
+def test_delete_refuses_plugin_only_template(dirs):
+    gallery, *_ = dirs
+    with pytest.raises(ValueError):
+        gallery.delete("plugin_card")
+
+
+def test_delete_user_copy_restores_plugin_template(dirs):
+    gallery, _, user, _ = dirs
+    gallery.save("plugin_card", PLAIN)
+    # 删掉副本后插件自带那一版又露出来，页面据此提示「恢复到自带的那一版」
+    assert gallery.delete("plugin_card")["shadowed"] is True
+    assert gallery.describe("plugin_card")["title"] == "群聊日报"
+    assert gallery.describe("plugin_card")["modified"] is False
+
+
 def test_delete_refuses_builtin_missing_and_slot(dirs):
-    gallery, _, user = dirs
+    gallery, _, user, _ = dirs
     with pytest.raises(ValueError):
         gallery.delete("base")  # 只在内置目录里，删不了
     with pytest.raises(FileNotFoundError):
@@ -336,7 +394,7 @@ def test_delete_refuses_builtin_missing_and_slot(dirs):
 
 
 def test_delete_drops_preview_cache(dirs, tmp_path):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     gallery.create("cached")
     rendered = tmp_path / "shot.jpg"
     rendered.write_bytes(b"jpeg")
@@ -346,7 +404,7 @@ def test_delete_drops_preview_cache(dirs, tmp_path):
 
 
 def test_save_leaves_no_temp_file(dirs):
-    gallery, _, user = dirs
+    gallery, _, user, _ = dirs
     gallery.create("tmpcheck")
     gallery.save("tmpcheck", PLAIN)
     assert not list(user.glob("*.tmp"))
@@ -409,7 +467,7 @@ def _build_api(
     not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
 )
 def test_web_registers_prefixed_template_routes(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     context = _FakeContext()
     routes = _build_api(gallery).register(context)
     assert len(routes) == len(context.routes) == 10
@@ -421,7 +479,7 @@ def test_web_registers_prefixed_template_routes(dirs):
 
 
 def test_web_skips_registration_without_web_api(dirs):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     api = _build_api(gallery)
     assert api.register(object()) == []
     assert api.registered == []
@@ -431,7 +489,7 @@ def test_web_skips_registration_without_web_api(dirs):
     not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
 )
 async def test_web_list_returns_templates_and_slot(dirs, monkeypatch):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     _patch_envelope(monkeypatch)
     api = _build_api(
         gallery,
@@ -444,6 +502,8 @@ async def test_web_list_returns_templates_and_slot(dirs, monkeypatch):
     assert {item["name"] for item in payload["templates"]} == {
         "base",
         "astrbot_powershell",
+        "shared",
+        "plugin_card",
         "自建模板",
     }
     assert payload["slot"]["name"] == SLOT_NAME
@@ -453,7 +513,7 @@ async def test_web_list_returns_templates_and_slot(dirs, monkeypatch):
     not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
 )
 async def test_web_preview_renders_then_serves_cache(dirs, monkeypatch, tmp_path):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     _patch_envelope(monkeypatch)
     rendered = tmp_path / "rendered.jpg"
     rendered.write_bytes(b"\xff\xd8\xff\xe0jpeg")
@@ -481,7 +541,7 @@ async def test_web_preview_renders_then_serves_cache(dirs, monkeypatch, tmp_path
     not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
 )
 async def test_web_preview_reports_render_failure(dirs, monkeypatch):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     _patch_envelope(monkeypatch)
     api = _build_api(gallery, preview=lambda name: _failed_preview())
     monkeypatch.setattr(template_web, "request", _FakeRequest({"name": "base"}))
@@ -494,7 +554,7 @@ async def test_web_preview_reports_render_failure(dirs, monkeypatch):
     not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
 )
 async def test_web_draft_preview_renders_unsaved_content(dirs, monkeypatch, tmp_path):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     _patch_envelope(monkeypatch)
     rendered = tmp_path / "draft.jpg"
     rendered.write_bytes(b"\xff\xd8\xff\xe0jpeg")
@@ -523,7 +583,7 @@ async def test_web_draft_preview_renders_unsaved_content(dirs, monkeypatch, tmp_
     not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
 )
 async def test_web_draft_preview_rejects_empty_content(dirs, monkeypatch):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     _patch_envelope(monkeypatch)
     api = _build_api(gallery)
     monkeypatch.setattr(template_web, "request", _FakeRequest({"content": "   \n"}))
@@ -536,7 +596,7 @@ async def test_web_draft_preview_rejects_empty_content(dirs, monkeypatch):
     not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
 )
 async def test_web_list_includes_sample_text(dirs, monkeypatch):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     _patch_envelope(monkeypatch)
     api = _build_api(gallery)
     response = await api.page_list()
@@ -549,7 +609,7 @@ async def test_web_list_includes_sample_text(dirs, monkeypatch):
     not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
 )
 async def test_web_sample_save_and_reset(dirs, monkeypatch):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     _patch_envelope(monkeypatch)
     api = _build_api(gallery)
 
@@ -572,7 +632,7 @@ async def test_web_sample_save_and_reset(dirs, monkeypatch):
     not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
 )
 async def test_web_apply_writes_slot_and_reports_restart(dirs, monkeypatch):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     _patch_envelope(monkeypatch)
 
     async def applied(name: str) -> dict[str, object]:
@@ -595,7 +655,7 @@ async def test_web_apply_writes_slot_and_reports_restart(dirs, monkeypatch):
     not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有插件页面 Web API"
 )
 async def test_web_apply_rejects_bad_names(dirs, monkeypatch):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     _patch_envelope(monkeypatch)
     api = _build_api(gallery)
 
@@ -615,7 +675,7 @@ async def test_web_apply_rejects_bad_names(dirs, monkeypatch):
     not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有页面 Web API"
 )
 async def test_web_create_then_read(dirs, monkeypatch):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     _patch_envelope(monkeypatch)
     api = _build_api(gallery)
 
@@ -641,7 +701,7 @@ async def test_web_create_then_read(dirs, monkeypatch):
     not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有页面 Web API"
 )
 async def test_web_save_and_read_errors(dirs, monkeypatch):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     _patch_envelope(monkeypatch)
     api = _build_api(gallery)
 
@@ -668,7 +728,7 @@ async def test_web_save_and_read_errors(dirs, monkeypatch):
     not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有页面 Web API"
 )
 async def test_web_create_and_save_pass_display_title(dirs, monkeypatch):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     _patch_envelope(monkeypatch)
     api = _build_api(gallery)
 
@@ -696,7 +756,7 @@ async def test_web_create_and_save_pass_display_title(dirs, monkeypatch):
     not template_web.WEB_API_AVAILABLE, reason="当前 AstrBot 没有页面 Web API"
 )
 async def test_web_delete(dirs, monkeypatch):
-    gallery, _, _ = dirs
+    gallery, *_ = dirs
     _patch_envelope(monkeypatch)
     api = _build_api(gallery)
     gallery.create("gone")

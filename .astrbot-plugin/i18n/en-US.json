@@ -168,6 +168,7 @@
         },
         "source": {
           "builtin": "Built-in",
+          "plugin": "Plugin",
           "custom": "Custom",
           "blank": "Blank template"
         },

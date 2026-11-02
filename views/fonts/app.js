@@ -1262,14 +1262,18 @@ function t2iDate(value) {
   return new Date(stamp * 1000).toLocaleDateString();
 }
 
+/** 三处来源的显示名：AstrBot 自带 / 本插件自带 / 用户自建。 */
+const T2I_SOURCE_LABELS = {
+  builtin: ["t2i.source.builtin", "内置"],
+  plugin: ["t2i.source.plugin", "插件"],
+  custom: ["t2i.source.custom", "自定义"],
+};
+
 /** 模板卡里的小字信息行：体积 · 来源 · 更新时间。 */
 function t2iFacts(item) {
   const bits = [humanSize(item.bytes)];
-  bits.push(
-    item.source === "custom"
-      ? t("t2i.source.custom", "自定义")
-      : t("t2i.source.builtin", "内置"),
-  );
+  const [key, fallback] = T2I_SOURCE_LABELS[item.source] || T2I_SOURCE_LABELS.custom;
+  bits.push(t(key, fallback));
   const date = t2iDate(item.updated);
   if (date) bits.push(t("t2i.updated", "更新于 {date}", { date }));
   return bits.join(t("t2i.separator", " · "));
@@ -1578,8 +1582,9 @@ async function openT2iEditor(name) {
     els.t2iEditorDisplay.value = current.custom_title ? current.title || "" : "";
   }
   if (els.t2iEditorDelete) {
-    // 内置模板是 AstrBot 自己的资产，删不掉；只有编辑用户自建模板时才给这一步
-    els.t2iEditorDelete.hidden = !editing || current.source !== "custom";
+    // 自建模板、以及改过自带模板留下的副本都能删；纯自带的模板是别人的资产，删不掉
+    els.t2iEditorDelete.hidden =
+      !editing || !(current.source === "custom" || current.modified === true);
     els.t2iEditorDelete.classList.remove("armed");
   }
   els.t2iEditorContent.value = "";

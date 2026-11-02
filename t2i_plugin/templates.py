@@ -2,8 +2,8 @@
 
 面板的「模板」栏用这里的两件事：
 
-* 列出 AstrBot 能用的模板（内置 + 用户自建），并给每个模板渲染一张预览图，
-  让用户直接看到排版效果再决定用哪个；
+* 列出 AstrBot 能用的模板（AstrBot 内置 + 插件自带 + 用户自建），并给每个模板渲染
+  一张预览图，让用户直接看到排版效果再决定用哪个；
 * 把选中的模板内容写进本插件的专属槽位 ``t2i_service_plugin``。
 
 槽位是这套设计的关键：AstrBot 的 ``t2i_active_template``（模板名）在启动时被流水线
@@ -30,6 +30,8 @@ except Exception:  # noqa: BLE001
 
 # 本插件在 AstrBot 模板清单里占用的槽位名（文件名即 <名字>.html）
 SLOT_NAME = "t2i_service_plugin"
+# 随插件发布的模板目录：插件目录下的子目录，用户不加自己的模板也有几套可选
+PLUGIN_TEMPLATE_SUBDIR = "plugin_templates"
 # 预览图按内容哈希命名，模板一改就换名字；只留最近这么多张，避免越积越多
 PREVIEW_KEEP = 24
 
@@ -271,6 +273,14 @@ def builtin_template_dir() -> Path:
         return user_template_dir()
 
 
+def plugin_template_dir() -> Path:
+    """本插件随包发布的模板目录（面板里来源显示为「插件」）。
+
+    跟着插件目录走而不是数据目录：卸载重装时随插件一起更新，也不占用户数据空间。
+    """
+    return Path(__file__).resolve().parent / PLUGIN_TEMPLATE_SUBDIR
+
+
 class TemplateGallery:
     """模板清单 / 预览图缓存 / 槽位写入。"""
 
@@ -290,6 +300,10 @@ class TemplateGallery:
         return builtin_template_dir()
 
     @property
+    def plugin_dir(self) -> Path:
+        return plugin_template_dir()
+
+    @property
     def slot_path(self) -> Path:
         return self.user_dir / f"{SLOT_NAME}.html"
 
@@ -298,9 +312,9 @@ class TemplateGallery:
         return self.user_dir / _TITLES_FILE
 
     def _names(self) -> list[str]:
-        """两个目录里所有模板名（不含本插件的槽位本身）。"""
+        """三处目录里所有模板名（不含本插件的槽位本身）。"""
         names: set[str] = set()
-        for directory in (self.builtin_dir, self.user_dir):
+        for directory in (self.builtin_dir, self.plugin_dir, self.user_dir):
             try:
                 entries = list(directory.iterdir())
             except OSError:
@@ -310,6 +324,25 @@ class TemplateGallery:
                     names.add(entry.stem)
         names.discard(SLOT_NAME)
         return sorted(names)
+
+    def _shipped(self, name: str) -> Path | None:
+        """自带版本的文件：插件自带的优先于 AstrBot 内置的，两处都没有返回 None。"""
+        for path in (
+            self.plugin_dir / f"{name}.html",
+            self.builtin_dir / f"{name}.html",
+        ):
+            if path.is_file():
+                return path
+        return None
+
+    def _origin(self, name: str) -> tuple[str, Path | None]:
+        """模板来源与对应的自带文件；("custom", None) 表示纯用户自建。"""
+        shipped = self._shipped(name)
+        if shipped is None:
+            return "custom", None
+        if shipped == self.plugin_dir / f"{name}.html":
+            return "plugin", shipped
+        return "builtin", shipped
 
     def list_templates(self) -> list[dict[str, object]]:
         """面板用的模板清单，标出槽位当前装的是哪一个。"""
@@ -326,21 +359,26 @@ class TemplateGallery:
         return items
 
     def describe(self, name: str) -> dict[str, object]:
-        """单个模板的信息：标题、来源、大小、变量、是否被改过。"""
+        """单个模板的信息：标题、来源、大小、变量、是否被改过。
+
+        来源看的是「自带版本在哪一层」，不是「内容从哪个文件读到」：用户改了插件模板后
+        副本落在用户目录，但它仍然是那套插件模板，不能被报成自建模板。
+        """
         content = self.read(name)
-        builtin_path = self.builtin_dir / f"{name}.html"
+        source, shipped = self._origin(name)
         user_path = self.user_dir / f"{name}.html"
-        path = user_path if user_path.is_file() else builtin_path
-        try:
-            stat = path.stat()
-            size, updated = stat.st_size, int(stat.st_mtime)
-        except OSError:
-            size, updated = len(content.encode("utf-8")), 0
-        builtin = builtin_path.is_file()
-        modified = False
-        if builtin and user_path.is_file():
+        path = user_path if user_path.is_file() else shipped
+        size, updated = len(content.encode("utf-8")), 0
+        if path is not None:
             try:
-                modified = self._hash(self.read(name)) != self._hash_path(builtin_path)
+                stat = path.stat()
+                size, updated = stat.st_size, int(stat.st_mtime)
+            except OSError:
+                pass
+        modified = False
+        if shipped is not None and user_path.is_file():
+            try:
+                modified = self._hash(content) != self._hash_path(shipped)
             except OSError:
                 modified = False
         custom_title = self._custom_titles().get(name, "")
@@ -349,7 +387,7 @@ class TemplateGallery:
             "title": custom_title or self._title(content) or name,
             "custom_title": bool(custom_title),
             "description": self._description(content),
-            "source": "builtin" if builtin else "custom",
+            "source": source,
             "modified": modified,
             "bytes": size,
             "updated": updated,
@@ -358,9 +396,13 @@ class TemplateGallery:
         }
 
     def read(self, name: str) -> str:
-        """按名字读模板内容：先用户目录再内置目录。"""
+        """按名字读模板内容：用户目录 > 插件自带 > AstrBot 内置。"""
         guard_name(name)
-        for path in (self.user_dir / f"{name}.html", self.builtin_dir / f"{name}.html"):
+        for path in (
+            self.user_dir / f"{name}.html",
+            self.plugin_dir / f"{name}.html",
+            self.builtin_dir / f"{name}.html",
+        ):
             if path.is_file():
                 return path.read_text(encoding="utf-8")
         raise FileNotFoundError(f"模板不存在：{name}")
@@ -395,13 +437,16 @@ class TemplateGallery:
         return self.describe(name)
 
     def delete(self, name: str) -> dict[str, object]:
-        """删掉用户目录里的模板；内置模板只能删用户副本，删完内置版本又露出来。"""
+        """删掉用户目录里的模板；自带模板只能删用户副本，删完自带版本又露出来。"""
         guard_name(name)
         if name == SLOT_NAME:
             raise ValueError("该名字被本插件占用，不能删除。")
         target = self.user_dir / f"{name}.html"
         if not target.is_file():
-            if (self.builtin_dir / f"{name}.html").is_file():
+            shipped = self._shipped(name)
+            if shipped is not None:
+                if shipped == self.plugin_dir / f"{name}.html":
+                    raise ValueError("插件自带模板不能删除。")
                 raise ValueError("内置模板不能删除。")
             raise FileNotFoundError(f"模板不存在：{name}")
         target.unlink()
@@ -410,7 +455,7 @@ class TemplateGallery:
         return {
             "name": name,
             "deleted": True,
-            "shadowed": (self.builtin_dir / f"{name}.html").is_file(),
+            "shadowed": self._shipped(name) is not None,
         }
 
     def _store_title(self, name: str, title: str) -> None:
@@ -455,8 +500,7 @@ class TemplateGallery:
         if name == SLOT_NAME:
             raise ValueError(f"模板名 {SLOT_NAME} 被本插件占用，请换一个。")
         if must_not_exist and (
-            (self.user_dir / f"{name}.html").is_file()
-            or (self.builtin_dir / f"{name}.html").is_file()
+            self._shipped(name) is not None or (self.user_dir / f"{name}.html").is_file()
         ):
             raise FileExistsError(f"模板已存在：{name}")
         return self.user_dir / f"{name}.html"

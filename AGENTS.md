@@ -30,7 +30,7 @@
 | `CHANGELOG.md` | ✅ | 变更日志 |
 | `LICENSE` + `NOTICE` | ✅ | Apache-2.0；`NOTICE` 记录上游基底与移植说明，**不可删** |
 | `requirements.txt` | ✅ | 插件模式运行时依赖（当前只有固定版本的 `playwright`） |
-| `t2i_plugin/` | ✅ | 插件适配层：`config` / `browser` / `server` / `card` / `fonts` / `font_web` / `templates` / `template_web` |
+| `t2i_plugin/` | ✅ | 插件适配层：`config` / `browser` / `server` / `card` / `fonts` / `font_web` / `templates` / `template_web` / `plugin_templates/`（随插件发布的转图模板） |
 | `t2i_core/` | ✅ | 渲染核心（自上游移植）：`render` / `api` / `storage` / `metrics` / `util`，**零 AstrBot 依赖** |
 | `service/main.py` | ✅ | 独立服务（FastAPI）入口；插件模式下不执行 |
 | `tests/` | ✅ | pytest 套件（核心层 + 插件层），CI 主线 |
@@ -108,7 +108,8 @@ service/main.py ─────────────────────�
 | 字体下载/上传/fontconfig 供给 | `t2i_plugin/fonts.py` |
 | 面板的字体 Web API | `t2i_plugin/font_web.py` |
 | 面板的模板 Web API | `t2i_plugin/template_web.py` |
-| 转图模板清单 / 新建编辑删除 / 应用 / 预览缓存 | `t2i_plugin/templates.py`（用户目录与内置目录的模板合并、新建与保存用户模板、显示名与删除、槽位模板写入、预览图缓存） |
+| 转图模板清单 / 新建编辑删除 / 应用 / 预览缓存 | `t2i_plugin/templates.py`（用户目录、插件自带目录与内置目录三处模板合并、新建与保存用户模板、显示名与删除、槽位模板写入、预览图缓存） |
+| 随插件发布的转图模板 | `t2i_plugin/plugin_templates/*.html`（文件名即模板名，面板来源显示为「插件」；同名的以用户副本为准，其次以插件自带为准） |
 | 面板页面（插件内嵌页面） | `views/fonts/`（一个页面，tab 切换「概览」「T2i 模板」「对接项目」，「对接项目」栏里再用二级 tab 显示上游项目名；栏位切换按 DOM 里的 tab/panel 配对自动接管，加栏位只改 HTML，不要再拆视图；配色只跟随桥写到 `<html data-theme>` 的浅/深色，文案一律走 `pages.fonts.*` 的 i18n，不在 JS 里写死中文） |
 | HTTP 契约、鉴权、失败透传 | `t2i_plugin/server.py` |
 | 渲染与截图行为、模板处理 | `t2i_core/render.py` |
