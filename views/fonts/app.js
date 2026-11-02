@@ -40,6 +40,13 @@ const els = {
   btnSpecimen: $("btn-specimen"),
   btnAll: $("btn-all"),
   upstreamTabs: $("upstream-tabs"),
+  t2iSlot: $("t2i-slot"),
+  t2iAlert: $("t2i-alert"),
+  t2iGrid: $("t2i-grid"),
+  t2iEmpty: $("t2i-empty"),
+  t2iLightbox: $("t2i-lightbox"),
+  t2iLightboxImg: $("t2i-lightbox-img"),
+  t2iLightboxClose: $("t2i-lightbox-close"),
   projectPanel: $("panel-project"),
 };
 
@@ -58,6 +65,11 @@ const state = {
   // 本次下载任务覆盖的家族 key 与模板 key：进度要显示在点下载的那张卡里
   jobKeys: new Set(),
   jobTemplate: "",
+  // T2i 模板栏位：清单来自后端扫出的内置 + 自定义模板，预览图按名字缓存在 t2iShots
+  t2i: null,
+  t2iShots: new Map(),
+  t2iLoading: false,
+  t2iRestart: false,
   jobSig: "",
 };
 
@@ -277,6 +289,8 @@ function activateTab(name, { focus = false, syncHash = true } = {}) {
     entry.tab.tabIndex = active ? 0 : -1;
     entry.panel.hidden = !active;
   }
+  // 模板栏位要开渲染进程出预览图，等真的有人打开这一栏再拉清单
+  if (target.id === "templates") loadT2iTemplates();
   if (focus) target.tab.focus();
   if (syncHash && window.location.hash !== `#${target.id}`) {
     // replaceState 而不是改 hash：切栏不该往浏览器历史里塞一堆条目
@@ -1171,6 +1185,301 @@ function bindActions() {
   });
 }
 
+// ---------------------------------------------------------------- T2i 模板栏位
+
+const t2iQueue = [];
+let t2iQueueBusy = false;
+
+/** 模板名不是给用户看的：内置三个模板给了中文名，其余直接用模板里的标题。 */
+function t2iLabel(item) {
+  const fallback = (item && (item.title || item.name)) || "";
+  return t(`t2i.name.${item ? item.name : ""}`, fallback);
+}
+
+/** 后端给的是文件 mtime 秒值，按页面语言换成日期；读不到就整段略过。 */
+function t2iDate(value) {
+  const stamp = Number(value);
+  if (!Number.isFinite(stamp) || stamp <= 0) return "";
+  return new Date(stamp * 1000).toLocaleDateString();
+}
+
+/** 模板卡里的小字信息行：体积 · 来源 · 更新时间。 */
+function t2iFacts(item) {
+  const bits = [humanSize(item.bytes)];
+  bits.push(
+    item.source === "custom"
+      ? t("t2i.source.custom", "自定义")
+      : t("t2i.source.builtin", "内置"),
+  );
+  const date = t2iDate(item.updated);
+  if (date) bits.push(t("t2i.updated", "更新于 {date}", { date }));
+  return bits.join(t("t2i.separator", " · "));
+}
+
+function t2iShotHtml(name, shot) {
+  if (shot.status === "ready" && shot.image) {
+    return `<img data-zoom="${escapeHtml(name)}" src="${shot.image}" alt="${escapeHtml(
+      t2iLabel({ name }),
+    )}" loading="lazy" />`;
+  }
+  if (shot.status === "error") {
+    return `<span class="muted small">${escapeHtml(
+      shot.message || t("t2i.previewFailed", "预览渲染失败，看看日志里 Chromium 有没有跑起来"),
+    )}</span>`;
+  }
+  return `<span class="spinner"></span><span class="muted small">${escapeHtml(
+    t("t2i.previewLoading", "正在渲染预览…"),
+  )}</span>`;
+}
+
+function renderT2iSlot(slot) {
+  if (!els.t2iSlot) return;
+  const chips = [];
+  if (slot.active) {
+    chips.push({
+      cls: "ok",
+      text: t("t2i.slot.active", "已接入模板槽位"),
+      title: slot.name || "",
+    });
+  } else {
+    chips.push({
+      cls: "warn",
+      text: t("t2i.slot.idle", "未接入（AstrBot 当前模板：{name}）", {
+        name: slot.current || "base",
+      }),
+    });
+  }
+  if (slot.active && slot.strategy && slot.strategy !== "remote") {
+    // 模板只在远程渲染策略下参与渲染，策略被改回本地时这里要能看出来
+    chips.push({
+      cls: "warn",
+      text: t("t2i.slot.strategy", "渲染策略为 {name}，模板不会生效", {
+        name: slot.strategy,
+      }),
+    });
+  }
+  els.t2iSlot.innerHTML = chips
+    .map(
+      (chip) =>
+        `<span class="chip ${chip.cls}"${
+          chip.title ? ` title="${escapeHtml(chip.title)}"` : ""
+        }>${escapeHtml(chip.text)}</span>`,
+    )
+    .join("");
+}
+
+function renderT2iCard(item, slot) {
+  const name = item.name;
+  const shot = state.t2iShots.get(name) || { status: "loading" };
+  const applied = Boolean(slot.active && slot.source && slot.source === name);
+  const actions = [];
+  if (applied) {
+    actions.push(
+      `<button class="ghost" data-apply="${escapeHtml(name)}">${escapeHtml(
+        t("t2i.reapply", "重新应用"),
+      )}</button>`,
+    );
+  } else {
+    actions.push(
+      `<button class="primary" data-apply="${escapeHtml(name)}">${escapeHtml(
+        t("t2i.apply", "应用"),
+      )}</button>`,
+    );
+  }
+  actions.push(
+    `<button class="ghost" data-preview="${escapeHtml(name)}">${escapeHtml(
+      t("t2i.preview", "重新渲染"),
+    )}</button>`,
+  );
+  const badge = applied
+    ? `<span class="chip ok">${escapeHtml(t("t2i.applied", "正在使用"))}</span>`
+    : "";
+  const vars = (item.variables || []).join(t("list.separator", "、"));
+  return `<article class="t2i-card" data-card="${escapeHtml(name)}">
+      <div class="t2i-shot${shot.status === "loading" ? " loading" : ""}" data-shot="${escapeHtml(
+        name,
+      )}">${t2iShotHtml(name, shot)}</div>
+      <div class="t2i-meta">
+        <div class="t2i-info">
+          <div class="t2i-name">${escapeHtml(t2iLabel(item))}${badge}</div>
+          <div class="muted small">${escapeHtml(item.description || "")}</div>
+          <div class="muted small">${escapeHtml(t2iFacts(item))}</div>
+          ${
+            vars
+              ? `<div class="muted small">${escapeHtml(
+                  t("t2i.variables", "模板变量：{list}", { list: vars }),
+                )}</div>`
+              : ""
+          }
+        </div>
+        <div class="t2i-actions">${actions.join("")}</div>
+      </div>
+    </article>`;
+}
+
+function renderT2i() {
+  if (!els.t2iGrid || !state.t2i) return;
+  const templates = state.t2i.templates || [];
+  const slot = state.t2i.slot || {};
+  renderT2iSlot(slot);
+  els.t2iEmpty.hidden = templates.length > 0;
+  els.t2iGrid.innerHTML = templates
+    .map((item) => renderT2iCard(item, slot))
+    .join("");
+}
+
+/** 只替换一张卡的预览区，避免整栏重绘把滚动位置弹回顶部。 */
+function setT2iShot(name, shot) {
+  state.t2iShots.set(name, shot);
+  if (!els.t2iGrid) return;
+  for (const card of els.t2iGrid.children) {
+    if (card.dataset.card !== name) continue;
+    const box = card.querySelector("[data-shot]");
+    if (!box) continue;
+    box.className = `t2i-shot${shot.status === "loading" ? " loading" : ""}`;
+    box.innerHTML = t2iShotHtml(name, shot);
+  }
+}
+
+async function renderT2iPreview(name, { force = false } = {}) {
+  setT2iShot(name, { status: "loading" });
+  const data = await apiPost(
+    "templates/preview",
+    force ? { name, refresh: true } : { name },
+  );
+  if (!data || !data.image) {
+    setT2iShot(name, { status: "error", message: state.lastError });
+    return;
+  }
+  setT2iShot(name, { status: "ready", image: data.image });
+}
+
+/** 预览要开 Chromium 页面，串行排队渲染，一次点开栏位不会把渲染并发全占掉。 */
+function enqueueT2iPreview(name, { force = false } = {}) {
+  if (!name) return;
+  const queued = t2iQueue.find((job) => job.name === name);
+  if (queued) {
+    if (force) queued.force = true;
+    return;
+  }
+  t2iQueue.push({ name, force });
+  pumpT2iQueue();
+}
+
+async function pumpT2iQueue() {
+  if (t2iQueueBusy) return;
+  t2iQueueBusy = true;
+  try {
+    while (t2iQueue.length) {
+      const job = t2iQueue.shift();
+      await renderT2iPreview(job.name, { force: job.force });
+    }
+  } finally {
+    t2iQueueBusy = false;
+  }
+}
+
+async function loadT2iTemplates({ force = false } = {}) {
+  if (state.t2iLoading) return;
+  if (state.t2i && !force) return;
+  state.t2iLoading = true;
+  try {
+    const data = await apiGet("templates/list");
+    if (!data) {
+      els.t2iEmpty.hidden = false;
+      els.t2iEmpty.textContent = t(
+        "t2i.loadFailed",
+        "拉不到模板清单，请确认插件版本与 AstrBot 日志",
+      );
+      return;
+    }
+    state.t2i = { templates: data.templates || [], slot: data.slot || {} };
+    renderT2i();
+    for (const item of state.t2i.templates) {
+      const shot = state.t2iShots.get(item.name);
+      if (shot && shot.status === "ready") continue;
+      enqueueT2iPreview(item.name);
+    }
+  } finally {
+    state.t2iLoading = false;
+  }
+}
+
+async function applyT2iTemplate(name, button) {
+  if (button) button.disabled = true;
+  const data = await apiPost("templates/apply", { name });
+  if (button) button.disabled = false;
+  if (!data) return;
+  state.t2iRestart = Boolean(data.restart_required);
+  els.t2iAlert.hidden = !state.t2iRestart;
+  const slot = state.t2i ? state.t2i.slot || {} : {};
+  state.t2i = {
+    templates: state.t2i ? state.t2i.templates : [],
+    slot: {
+      ...slot,
+      active: true,
+      name: slot.name || data.slot,
+      source: data.source || name,
+      current: data.current || slot.name || data.slot,
+      strategy: "remote",
+      endpoint: data.endpoint || slot.endpoint,
+    },
+  };
+  renderT2i();
+  const label = t2iLabel({ name });
+  toast(
+    state.t2iRestart
+      ? t("t2i.toastRestart", "已应用 {name}，重启 AstrBot 后生效", { name: label })
+      : t("t2i.toastApplied", "已切换到 {name}，下一条消息就用它渲染", { name: label }),
+    "ok",
+  );
+}
+
+function openT2iZoom(name) {
+  const shot = state.t2iShots.get(name);
+  if (!shot || shot.status !== "ready" || !shot.image) return;
+  if (!els.t2iLightbox) return;
+  els.t2iLightboxImg.src = shot.image;
+  els.t2iLightboxImg.alt = t2iLabel({ name });
+  // 插件页在 iframe 里，<dialog> 的模态行为仍然可用；老浏览器退回 open 属性
+  if (typeof els.t2iLightbox.showModal === "function") els.t2iLightbox.showModal();
+  else els.t2iLightbox.setAttribute("open", "");
+}
+
+function closeT2iZoom() {
+  if (!els.t2iLightbox) return;
+  if (typeof els.t2iLightbox.close === "function") els.t2iLightbox.close();
+  els.t2iLightbox.removeAttribute("open");
+}
+
+function bindT2i() {
+  if (els.t2iGrid) {
+    els.t2iGrid.addEventListener("click", async (event) => {
+      const zoom = event.target.closest("[data-zoom]");
+      if (zoom) {
+        openT2iZoom(zoom.dataset.zoom);
+        return;
+      }
+      const preview = event.target.closest("button[data-preview]");
+      if (preview) {
+        enqueueT2iPreview(preview.dataset.preview, { force: true });
+        return;
+      }
+      const apply = event.target.closest("button[data-apply]");
+      if (apply) await applyT2iTemplate(apply.dataset.apply, apply);
+    });
+  }
+  if (els.t2iLightboxClose) {
+    els.t2iLightboxClose.addEventListener("click", closeT2iZoom);
+  }
+  if (els.t2iLightbox) {
+    // 点遮罩（dialog 自身而不是里面的内容）关闭
+    els.t2iLightbox.addEventListener("click", (event) => {
+      if (event.target === els.t2iLightbox) closeT2iZoom();
+    });
+  }
+}
+
 // ---------------------------------------------------------------- 启动
 
 async function boot() {
@@ -1193,6 +1502,7 @@ async function boot() {
   bindForms();
   bindGrids();
   bindActions();
+  bindT2i();
   await load();
   const current = state.data && state.data.status && state.data.status.job;
   if (current && current.status === "running") {

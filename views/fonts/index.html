@@ -83,6 +83,29 @@
         </button>
         <button
           class="tab"
+          id="tab-templates"
+          role="tab"
+          aria-controls="panel-templates"
+          aria-selected="false"
+          tabindex="-1"
+        >
+          <svg
+            class="tab-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <path d="M3 9h18M9 9v11" />
+          </svg>
+          <span data-i18n="tab.templates">T2i 模板</span>
+        </button>
+        <button
+          class="tab"
           id="tab-upstream"
           role="tab"
           aria-controls="panel-upstream"
@@ -196,6 +219,35 @@
         </section>
       </div>
 
+      <div
+        class="panel"
+        id="panel-templates"
+        role="tabpanel"
+        aria-labelledby="tab-templates"
+        hidden
+      >
+        <section class="card">
+          <div class="card-head">
+            <h2 data-i18n="t2i.title">T2i 模板</h2>
+            <span class="chips" id="t2i-slot"></span>
+          </div>
+          <p class="muted small" data-i18n-html="t2i.hint">
+            应用后 AstrBot 会用这套模板把消息渲染成图片。插件通过一个专属槽位模板接入，
+            换风格只更新槽位内容，不用再改 AstrBot 的模板名。
+          </p>
+          <div id="t2i-alert" class="alert warn" hidden>
+            <span class="alert-text" data-i18n-html="t2i.restart">
+              AstrBot 只在启动时读取模板名，重启一次后这套模板才会真正生效。
+            </span>
+          </div>
+        </section>
+
+        <div class="t2i-grid" id="t2i-grid"></div>
+        <p class="muted small" id="t2i-empty" data-i18n="t2i.empty" hidden>
+          没有找到可用的模板。
+        </p>
+      </div>
+
       <div class="panel" id="panel-upstream" role="tabpanel" aria-labelledby="tab-upstream" hidden>
         <div
           class="subtabs"
@@ -254,6 +306,19 @@
     </main>
 
     <div id="toast" class="toast" hidden></div>
+    <dialog id="t2i-lightbox" class="lightbox">
+      <button
+        class="ghost lightbox-close"
+        id="t2i-lightbox-close"
+        type="button"
+        data-i18n-title="t2i.close"
+        title="关闭"
+      >
+        ✕
+      </button>
+      <img id="t2i-lightbox-img" alt="" />
+    </dialog>
+
     <script type="module" src="./app.js"></script>
   </body>
 </html>

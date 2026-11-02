@@ -75,6 +75,8 @@ from t2i_plugin.config import DEFAULT_FALLBACK_ENDPOINT, T2IConfig  # noqa: E402
 from t2i_plugin.font_web import FontWebApi  # noqa: E402
 from t2i_plugin.fonts import FontManager  # noqa: E402
 from t2i_plugin.server import T2IHttpServer  # noqa: E402
+from t2i_plugin.template_web import TemplateWebApi  # noqa: E402
+from t2i_plugin.templates import SLOT_NAME, TemplateGallery  # noqa: E402
 
 # 历史上会写进用户配置的备用端点，官方已停用；值为空时视为「未自定义」
 LEGACY_FALLBACK_ENDPOINTS = {
@@ -166,6 +168,18 @@ class T2IServicePlugin(Star):
         # 在 __init__ 里注册：AstrBot 收集的是插件实例注册过的路由，
         # 视图页面在插件卡片打开时才会被发现，两者都早于 initialize() 的执行时机。
         self.font_web.register(context)
+
+        # 模板供给：模板文件仍归 AstrBot 的模板目录管，插件只把选中的那套内容写进
+        # 自己的槽位，并把 AstrBot 的「当前模板」指向槽位（详见 t2i_plugin/templates.py）。
+        self.templates = TemplateGallery(self.data_dir, plugin_version=_plugin_version())
+        self.template_web = TemplateWebApi(
+            PLUGIN_NAME,
+            self.templates,
+            preview=self._render_template_preview,
+            apply=self._apply_t2i_template,
+            state=self._template_slot_state,
+        )
+        self.template_web.register(context)
 
     # ------------------------------------------------------------ 生命周期
 
@@ -508,6 +522,72 @@ class T2IServicePlugin(Star):
                     names.append(text)
         return names
 
+    # ------------------------------------------------------------ 模板供给
+
+    async def _render_template_preview(self, name: str) -> tuple[bool, str]:
+        """渲染一张模板预览图，返回（是否成功, 图片路径或错误信息）。"""
+        try:
+            template = await asyncio.to_thread(self.templates.read, name)
+        except (OSError, ValueError, UnicodeDecodeError) as exc:
+            return False, f"读取模板失败：{exc}"
+        return await self.server.render_template_probe(
+            template, self.templates.sample_data()
+        )
+
+    async def _apply_t2i_template(self, name: str) -> dict[str, object]:
+        """把模板写进本插件的槽位，并让 AstrBot 真的用它来渲染。
+
+        模板名（``t2i_active_template``）会被 AstrBot 的流水线在启动时缓存，插件拿不
+        到重建流水线的入口，所以只有「名字还没指向槽位」时才需要重启一次；之后换模板
+        只改槽位文件内容，而模板内容是每次渲染现读的，立刻就生效。
+        """
+        result = await asyncio.to_thread(self.templates.apply, name)
+        endpoint = self.settings.resolve_service_url()
+        core_config = self.context.get_config()
+        wrote: list[str] = []
+        if core_config.get("t2i_active_template") != SLOT_NAME:
+            core_config["t2i_active_template"] = SLOT_NAME
+            wrote.append("t2i_active_template")
+        # 模板只在远程渲染策略下参与渲染；端点也要指着本插件，否则模板根本没机会被读到
+        if core_config.get("t2i_strategy") != "remote":
+            core_config["t2i_strategy"] = "remote"
+            wrote.append("t2i_strategy")
+        if core_config.get("t2i_endpoint") != endpoint:
+            core_config["t2i_endpoint"] = endpoint
+            wrote.append("t2i_endpoint")
+        if wrote:
+            await _save_config(core_config)
+            logger.info(
+                f"[t2i] 已应用模板 {name} 到槽位 {SLOT_NAME}，写入配置：{', '.join(wrote)}"
+            )
+        return {
+            **result,
+            "wrote": wrote,
+            "restart_required": "t2i_active_template" in wrote or "t2i_strategy" in wrote,
+            "endpoint": endpoint,
+            "current": self._read_core_config("t2i_active_template"),
+            "output_enabled": self._read_core_flag("t2i"),
+        }
+
+    async def _template_slot_state(self) -> dict[str, object]:
+        """页面用的槽位状态：AstrBot 当前模板是不是槽位、槽位里装的是哪一套。"""
+        try:
+            source = await asyncio.to_thread(self.templates.applied_source)
+        except OSError as exc:  # pragma: no cover - 防御：磁盘异常只影响高亮
+            logger.debug(f"[t2i] 比对模板槽位内容失败：{exc}")
+            source = ""
+        current = self._read_core_config("t2i_active_template")
+        return {
+            "name": SLOT_NAME,
+            "active": current == SLOT_NAME,
+            "current": current,
+            "source": source,
+            "strategy": self._read_core_config("t2i_strategy"),
+            "endpoint": self._read_core_config("t2i_endpoint"),
+            "service": self.settings.resolve_service_url(),
+            "output_enabled": self._read_core_flag("t2i"),
+        }
+
     # -------------------------------------------------------------- 状态信息
 
     def _status_payload(self) -> dict:
@@ -544,6 +624,11 @@ class T2IServicePlugin(Star):
                 "files": self.fonts.status()["files"],
                 "total_text": self.fonts.status()["total_text"],
                 "env_active": self.fonts.env_active(),
+            },
+            "templates": {
+                # 模板名被 AstrBot 流水线缓存，这里只是用户当前选中的名字
+                "slot": SLOT_NAME,
+                "active_template": self._read_core_config("t2i_active_template"),
             },
         }
 

@@ -39,7 +39,8 @@
       },
       "tab": {
         "overview": "Overview",
-        "upstreamPlain": "Upstream project"
+        "upstreamPlain": "Upstream project",
+        "templates": "T2i templates"
       },
       "stat": {
         "files": "Font files",
@@ -146,6 +147,39 @@
           "error": "Failed"
         },
         "preparing": "Preparing"
+      },
+      "t2i": {
+        "title": "T2i templates",
+        "hint": "Once applied, AstrBot renders messages with this template. The plugin plugs in through one dedicated slot template, so switching styles only rewrites the slot content — AstrBot's template name stays put.",
+        "restart": "AstrBot reads the template name only at startup; restart it once and this template takes effect.",
+        "empty": "No templates found.",
+        "loadFailed": "Could not load the template list; check the plugin version and the AstrBot log",
+        "previewLoading": "Rendering preview…",
+        "previewFailed": "Preview rendering failed — check the log to see whether Chromium started",
+        "preview": "Re-render",
+        "apply": "Apply",
+        "reapply": "Apply again",
+        "applied": "In use",
+        "close": "Close",
+        "slot": {
+          "active": "Wired to the template slot",
+          "idle": "Not wired (AstrBot template: {name})",
+          "strategy": "Render strategy is {name}, so templates are ignored"
+        },
+        "source": {
+          "builtin": "Built-in",
+          "custom": "Custom"
+        },
+        "updated": "Updated {date}",
+        "variables": "Template variables: {list}",
+        "separator": " · ",
+        "toastApplied": "Switched to {name}; the next message uses it",
+        "toastRestart": "Applied {name}; restart AstrBot to take effect",
+        "name": {
+          "base": "Base",
+          "astrbot_powershell": "PowerShell style",
+          "astrbot_vitepress": "VitePress docs style"
+        }
       },
       "toast": {
         "busy": "Another job is already running, please wait",

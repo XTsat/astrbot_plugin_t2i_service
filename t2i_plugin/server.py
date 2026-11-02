@@ -97,6 +97,8 @@ def _format_body_size(size: int | None) -> str:
 SERVER_REGISTRY_ATTR = "__t2i_service_servers__"
 PORT_BIND_RETRY_SECONDS = 6.0
 PORT_BIND_RETRY_INTERVAL = 0.5
+# 模板预览图的 jpeg 质量：够看清排版细节，又不至于让面板里一次拉好几兆
+TEMPLATE_PREVIEW_QUALITY = 72
 
 
 def _server_registry() -> dict[str, "T2IHttpServer"]:
@@ -527,6 +529,32 @@ class T2IHttpServer:
                 ),
             )
             RENDER_REQUESTS.labels(result="success", format="png", scale=scale).inc()
+            return True, picture
+        except PlaywrightNotInstalledError as exc:
+            return False, str(exc)
+        except Exception as exc:  # noqa: BLE001 - 需要把原因回给用户
+            return False, f"渲染失败：{explain_launch_error(str(exc))}"
+
+    async def render_template_probe(
+        self, tmpl: str, data: dict[str, str], *, width: int | None = None
+    ) -> tuple[bool, str]:
+        """按模板 + 变量渲染一张预览图，供面板「模板」栏展示排版效果。
+
+        与真实渲染走同一条链路（同一个渲染器、同一套 Jinja2 沙箱），只是输出换成体积
+        更小的 jpeg：预览图要在页面里逐张加载，png 会白等好几秒。
+        """
+        try:
+            _, abs_path = await self.renderer.from_jinja_template(tmpl, data)
+            picture = await self.renderer.html2pic(
+                abs_path,
+                ScreenshotOptions(
+                    type="jpeg",
+                    quality=TEMPLATE_PREVIEW_QUALITY,
+                    full_page=True,
+                    viewport_width=width,
+                ),
+            )
+            RENDER_REQUESTS.labels(result="success", format="jpeg", scale="normal").inc()
             return True, picture
         except PlaywrightNotInstalledError as exc:
             return False, str(exc)

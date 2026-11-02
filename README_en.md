@@ -13,6 +13,7 @@ The rendering engine is ported from [astrbot-t2i-service](https://github.com/Ast
 - **Browser in one step**: turn on **Download Chromium** in the config and save (npmmirror mirror by default, ~200 MB); an existing system Chromium can be pointed at instead.
 - **Missing libraries installed for you**: when Chromium is downloaded but cannot launch (missing `libnspr4` and friends), the plugin finds out which libraries are missing and installs them; if the environment does not allow it, you get the exact command to run.
 - **Fonts bundled with the plugin**: missing fonts no longer need to be installed system-wide — download the preset families, paste a font link, or upload your own file from the plugin page, then render a preview card to confirm they took effect.
+- **Templates in one click**: the **T2I templates** tab shows a real render, the source and the size of every template; hit **Apply** and AstrBot's text-to-image template switches to it, and switching again later takes effect on the next message.
 - **No endpoint to copy by hand**: optionally the plugin writes its own address into AstrBot's text-to-image config, together with the text-to-image output switch.
 - **Rendering stays available**: while local rendering is unavailable (for example before Chromium is installed), requests are proxied to the fallback endpoint and the image is stored locally before it is handed to AstrBot.
 - **Status at a glance**: `/t2i_status` reports the service, the browser, system libraries, the endpoint and render stats; `/t2i_test` renders a card on the spot so you can see whether the chain works.
@@ -43,7 +44,7 @@ For a first run entirely in chat, go `/t2i_status` → `/t2i_install` → `/t2i_
 
 Templates ask for family names such as `Noto Serif SC` or `Inter`, which a server may not have; without them the template silently falls back to a default font and the layout drifts. This plugin supplies fonts as well: font files live under `fonts/` in the plugin data directory and Chromium picks them up while rendering — **no template edits and no system-wide font installation**.
 
-Where: WebUI plugin details → the **T2I Service Panel** page. It has two tabs: **Overview** (font library stats and job progress, plus upload, link, delete and preview) and **Upstream project** (whole template sets and the single-family list for the project it integrates with, with a second-level tab naming the project); the text inside each tab links to the other one, and the page says so when `fonts.enabled` is off. The page follows the AstrBot console: colors track its light/dark theme and the copy follows the interface language (Chinese/English); a row of chips at the top shows whether fonts are in effect and any running job, and a failed load explains why and offers **Retry**.
+Where: WebUI plugin details → the **T2I Service Panel** page. It has three tabs: **Overview** (font library stats and job progress, plus upload, link, delete and preview), **T2I templates** (renders and one-click apply for AstrBot's text-to-image templates, see [Text-to-image templates](#text-to-image-templates)) and **Upstream project** (whole template sets and the single-family list for the project it integrates with, with a second-level tab naming the project); the text inside each tab links to the other one, and the page says so when `fonts.enabled` is off. The page follows the AstrBot console: colors track its light/dark theme and the copy follows the interface language (Chinese/English); a row of chips at the top shows whether fonts are in effect and any running job, and a failed load explains why and offers **Retry**.
 
 **Overview** (stats, jobs, upload, download by link, delete, preview)
 
@@ -58,6 +59,16 @@ Where: WebUI plugin details → the **T2I Service Panel** page. It has two tabs:
 - **Whole template in one click**: for [astrbot_plugin_qq_group_daily_analysis](https://github.com/SXP-Simon/astrbot_plugin_qq_group_daily_analysis/blob/main/docs/T2I_FONTS.md) (QQ group daily analysis) the font requirements of each report template are already mapped — pick a template name (Layout, Scrapbook, Spring Festival, ATRI ...) to install everything it needs, with anything still missing marked.
 
 The directory layout is one subdirectory per family, with license files such as `OFL.txt` kept next to the font so the origin travels with it. Direct GitHub access is very slow in mainland China, so preset fonts go through built-in mirrors and acceleration prefixes first — even 20+ MB CJK fonts download fine; you can supply your own prefix in the config page.
+
+## Text-to-image templates
+
+Which HTML template AstrBot uses to turn long text into an image is a config value, and a template file tells you nothing about how it looks. The **T2I templates** tab turns that into something you can pick from: one card per template, with a real render on top (produced by the same rendering chain, using a fixed Markdown sample — headings, lists, quote, table, code block) and, underneath, the name, source, size, last-modified date and the variables the template can use; the **Apply** button sits on the right. Click an image to zoom in.
+
+- **One-click apply**: the plugin copies the template into its own slot, `t2i_service_plugin`, then points AstrBot's active template at that slot, sets the strategy to remote and the endpoint to this plugin — no hunting for template names or copying addresses in the config page.
+- **Switching needs no restart**: the first apply needs one AstrBot restart (it only reads the template name at startup); after that, applying another template takes effect on the next message.
+- **Easy to go back**: to return to a stock AstrBot template, change the active template in AstrBot's config page — the plugin will not override your choice.
+- **Where templates come from**: the ones shipped with AstrBot (default / PowerShell / VitePress) plus anything you put in `data/t2i_templates/`; on a name clash yours wins.
+- **Look before you switch**: **Re-render** on a card redraws its preview from the current template content, so an edited template shows its new look right away.
 
 ## Configuration
 
@@ -208,6 +219,9 @@ Check that `t2i_endpoint` still targets the plugin's listen address; `/t2i_statu
 
 **A font is installed but the template still uses something else**
 Click **Render preview** under **Overview** on the T2I Service Panel page (click the family names first to compare only those): each row is one font, and if several rows look identical none of those fonts are in effect. The usual causes are a render process that has not restarted yet (the **Restart the browser after font changes** option is off, or press **Reload fonts**) or a file that is really a renamed web page or archive — uploads and downloads both check the font file header. Note also that templates ask for `Noto Sans SC` while a system package provides `Noto Sans CJK SC`; one cannot stand in for the other.
+
+**I applied a template but the output still looks the same**
+The first apply needs one AstrBot restart (it only reads the template name at startup); after that, switching to another template takes effect on the next message. If nothing changed after the restart, check the status chips at the top of the **T2I templates** tab: when it says the plugin's template is not in use, hit **Apply** again.
 
 **Disk usage**
 Chromium takes ~200 MB in the plugin data directory; rendered images are kept 24 hours and cleaned on a timer. Fonts add up per family — a full template set usually costs 20–60 MB.

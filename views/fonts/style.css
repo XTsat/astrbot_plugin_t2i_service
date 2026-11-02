@@ -871,6 +871,107 @@ button.pick[aria-pressed="true"] {
   border-color: var(--ok);
 }
 
+/* ---------------------------------------------------------------- T2i 模板 */
+
+/* 每张模板卡：上面是渲染实拍，下面一行是信息与按钮——先看到效果再决定应不应用 */
+.t2i-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+}
+
+.t2i-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* 卡片只露渲染图的开头一段：模板输出往往很长，整张塞进来会把信息挤没 */
+.t2i-shot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.t2i-shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  cursor: zoom-in;
+}
+
+.t2i-meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.t2i-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.t2i-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  font-weight: 600;
+}
+
+.t2i-actions {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+/* 预览大图：模板原图很高，靠滚动看全 */
+.lightbox {
+  position: relative;
+  max-width: min(96vw, 1100px);
+  max-height: 92vh;
+  padding: 0;
+  overflow: auto;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.lightbox::backdrop {
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.lightbox img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  background: var(--card);
+}
+
 @media (max-width: 640px) {
   body {
     padding: 12px;
@@ -887,5 +988,18 @@ button.pick[aria-pressed="true"] {
 
   .chips {
     justify-content: flex-start;
+  }
+
+  .t2i-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .t2i-meta {
+    flex-direction: column;
+  }
+
+  .t2i-actions {
+    flex-direction: row;
+    width: 100%;
   }
 }

@@ -22,6 +22,7 @@ import pytest
 import main as plugin_main
 from t2i_plugin.browser import DONE, FAILED, RUNNING, InstallState
 from t2i_plugin.card import build_status_card, build_test_card
+from t2i_plugin import templates as templates_module
 from t2i_plugin.config import DEFAULT_FALLBACK_ENDPOINT
 
 
@@ -73,16 +74,21 @@ async def test_config_is_parsed_into_components(plugin):
     assert instance.images_dir.is_dir()
 
 
-async def test_only_font_web_apis_are_registered(plugin):
-    # 插件当前只给「文转图服务面板」注册 Web API；渲染与存储都走 /text2img 契约，
-    # 不该在插件层另开入口。
+async def test_only_panel_web_apis_are_registered(plugin):
+    # 插件只给「文转图服务面板」注册 Web API：字体供给与模板栏位两组；
+    # 渲染与存储都走 /text2img 契约，不该在插件层另开入口。
     port = free_port()
     instance = plugin(
         {"server": {"enabled": False, "port": port}, "render": {"prelaunch": False}}
     )
     routes = [route for route, _handler, _methods, _desc in instance.context.web_apis]
-    assert len(routes) == 8
-    assert all(route.startswith("/astrbot_plugin_t2i_service/fonts/") for route in routes)
+    prefix = "/astrbot_plugin_t2i_service"
+    assert len(routes) == len(set(routes)) == 11
+    assert len([route for route in routes if route.startswith(f"{prefix}/fonts/")]) == 8
+    assert (
+        len([route for route in routes if route.startswith(f"{prefix}/templates/")]) == 3
+    )
+    assert all(route.startswith(prefix) for route in routes)
 
 
 async def test_fonts_dir_is_supplied_to_renderer(plugin, monkeypatch):
@@ -506,3 +512,64 @@ async def test_install_hint_is_empty_when_nothing_to_fix(plugin, monkeypatch):
     monkeypatch.setattr(manager, "is_installed", lambda: True)
     monkeypatch.setattr(manager, "missing_shared_libs", lambda: [])
     assert instance._install_hint() == ""
+
+
+class _RecordingConfig(dict):
+    """AstrBot 主配置的替身：记录被落盘的次数，供「应用模板」测试断言。"""
+
+    def __init__(self, data: dict, sink: list[dict]) -> None:
+        super().__init__(data)
+        self._sink = sink
+
+    async def save_config_async(self) -> None:
+        self._sink.append(dict(self))
+
+
+async def test_apply_template_writes_slot_and_core_config(tmp_path, monkeypatch):
+    # 模板目录指到临时目录：这条用例不该读写真实 AstrBot 的 t2i_templates
+    builtin = tmp_path / "builtin"
+    user = tmp_path / "user"
+    builtin.mkdir()
+    user.mkdir()
+    (builtin / "alpha.html").write_text("<html>{{ text }}</html>", encoding="utf-8")
+    (builtin / "beta.html").write_text("<html>beta {{ text }}</html>", encoding="utf-8")
+    monkeypatch.setattr(templates_module, "builtin_template_dir", lambda: builtin)
+    monkeypatch.setattr(templates_module, "user_template_dir", lambda: user)
+    monkeypatch.setattr(
+        plugin_main, "get_astrbot_plugin_data_path", lambda: str(tmp_path / "plugin")
+    )
+
+    saved: list[dict] = []
+    core_config = _RecordingConfig(
+        {"t2i_active_template": "base", "t2i_strategy": "local", "t2i_endpoint": ""},
+        saved,
+    )
+    instance = plugin_main.T2IServicePlugin(
+        FakeContext(core_config), {"server": {"enabled": False}, "render": {"prelaunch": False}}
+    )
+
+    result = await instance._apply_t2i_template("alpha")
+    # 第一次把 AstrBot 的模板名改成槽位：名字会被流水线缓存，所以要求重启一次
+    assert result["restart_required"] is True
+    assert result["current"] == "t2i_service_plugin"
+    assert (user / "t2i_service_plugin.html").read_text(encoding="utf-8") == (
+        "<html>{{ text }}</html>"
+    )
+    assert core_config["t2i_active_template"] == "t2i_service_plugin"
+    assert core_config["t2i_strategy"] == "remote"
+    assert core_config["t2i_endpoint"] == instance.settings.resolve_service_url()
+    assert len(saved) == 1
+
+    # 第二次只换槽位内容：名字已经对得上，不需要再重启
+    again = await instance._apply_t2i_template("beta")
+    assert again["restart_required"] is False
+    assert again["source"] == "beta"
+    assert (user / "t2i_service_plugin.html").read_text(encoding="utf-8") == (
+        "<html>beta {{ text }}</html>"
+    )
+
+    # 状态接口跟着槽位内容走：页面据此点亮「正在使用」与「已接入模板槽位」
+    state = await instance._template_slot_state()
+    assert state["active"] is True
+    assert state["source"] == "beta"
+    assert state["endpoint"] == instance.settings.resolve_service_url()

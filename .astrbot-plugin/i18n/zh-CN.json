@@ -39,7 +39,8 @@
       },
       "tab": {
         "overview": "概览",
-        "upstreamPlain": "对接项目"
+        "upstreamPlain": "对接项目",
+        "templates": "T2i 模板"
       },
       "stat": {
         "files": "字体文件",
@@ -146,6 +147,39 @@
           "error": "失败"
         },
         "preparing": "准备中"
+      },
+      "t2i": {
+        "title": "T2i 模板",
+        "hint": "应用后 AstrBot 会用这套模板把消息渲染成图片。插件通过一个专属槽位模板接入，换风格只更新槽位内容，不用再改 AstrBot 的模板名。",
+        "restart": "AstrBot 只在启动时读取模板名，重启一次后这套模板才会真正生效。",
+        "empty": "没有找到可用的模板。",
+        "loadFailed": "拉不到模板清单，请确认插件版本与 AstrBot 日志",
+        "previewLoading": "正在渲染预览…",
+        "previewFailed": "预览渲染失败，看看日志里 Chromium 有没有跑起来",
+        "preview": "重新渲染",
+        "apply": "应用",
+        "reapply": "重新应用",
+        "applied": "正在使用",
+        "close": "关闭",
+        "slot": {
+          "active": "已接入模板槽位",
+          "idle": "未接入（AstrBot 当前模板：{name}）",
+          "strategy": "渲染策略为 {name}，模板不会生效"
+        },
+        "source": {
+          "builtin": "内置",
+          "custom": "自定义"
+        },
+        "updated": "更新于 {date}",
+        "variables": "模板变量：{list}",
+        "separator": " · ",
+        "toastApplied": "已切换到 {name}，下一条消息就用它渲染",
+        "toastRestart": "已应用 {name}，重启 AstrBot 后生效",
+        "name": {
+          "base": "默认模板",
+          "astrbot_powershell": "PowerShell 风格",
+          "astrbot_vitepress": "VitePress 文档风格"
+        }
       },
       "toast": {
         "busy": "已有任务在进行中，请等待完成",
