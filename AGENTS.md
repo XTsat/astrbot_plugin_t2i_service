@@ -5,7 +5,7 @@
 >
 > 适用项目：`astrbot_plugin_*` 命名的 AstrBot 插件（Python）。
 >
-> **模板版本**：v0.1.0（2026-10-21） —— 本行标记本文件对应的 `astrbot-plugin` 模板版本。回填项目内容时**不要改动本行**；只有从上游合并到新版本时才把它更新为合并到的版本。
+> **模板版本**：v0.1.7（2026-11-04） —— 本行标记本文件对应的 `astrbot-plugin` 模板版本。回填项目内容时**不要改动本行**；只有从上游合并到新版本时才把它更新为合并到的版本。
 > **来源**：本文件是 [agent-templates](https://github.com/XTsat/agent-templates) 的 `templates/astrbot-plugin/AGENTS.md` 副本，最新版见该仓库 `main` 分支。
 > 用户说「更新 AGENTS」时按此流程：① 打开来源仓库该模板的 `AGENTS.md`，比对头部「模板版本」与本地是否一致——一致说明已是最新，直接结束，不必拉取逐节比对 → ② 不一致才拉取来源模板最新版 → ③ 与本地逐节比对 → ④ 合并（保留本项目已回填的插件名、命令前缀、目录结构与项目特有约定）→ ⑤ 展示 diff 与改动清单，等用户确认后再落盘，并把头部「模板版本」同步改为合并到的版本。**禁止整文件覆盖**。
 >
@@ -23,9 +23,9 @@
 
 | 文件 / 目录 | 必选 | 职责 |
 |------|------|------|
-| `main.py` | ✅ | Star 插件入口：生命周期、4 个命令、周期清理、端点写入 |
+| `main.py` | ✅ | Star 插件入口：生命周期、5 个命令、周期清理、端点写入 |
 | `metadata.yaml` | ✅ | 插件元数据（name/version/author/desc/repo/astrbot_version/tags），**唯一版本源** |
-| `_conf_schema.json` | ✅ | WebUI 配置 Schema（`server` / `render` / `browser` / `endpoint` / `storage` / `fonts` 六段） |
+| `_conf_schema.json` | ✅ | WebUI 配置 Schema（`server` / `render` / `browser` / `endpoint` / `storage` / `fonts` / `templates` 七段） |
 | `README.md` + `README_en.md` | ✅ | 用户文档，中文版为权威源 |
 | `CHANGELOG.md` | ✅ | 变更日志 |
 | `LICENSE` + `NOTICE` | ✅ | Apache-2.0；`NOTICE` 记录上游基底与移植说明，**不可删** |
@@ -110,7 +110,7 @@ service/main.py ─────────────────────�
 | 面板的模板 Web API | `t2i_plugin/template_web.py` |
 | 转图模板清单 / 新建编辑删除 / 应用 / 预览缓存 | `t2i_plugin/templates.py`（用户目录、插件自带目录与内置目录三处模板合并、新建与保存用户模板、显示名与删除、槽位模板写入、预览图缓存） |
 | 随插件发布的转图模板 | `t2i_plugin/plugin_templates/*.html` + `plugin_templates/assets/`（文件名即模板名，面板来源显示为「插件」；模板里按 `assets/文件名` 引用图片，读模板时内联成 data URI；同名的以用户副本为准，其次以插件自带为准） |
-| 面板页面（插件内嵌页面） | `views/fonts/`（一个页面，tab 切换「概览」「T2i 模板」「对接项目」，「对接项目」栏里再用二级 tab 显示上游项目名；栏位切换按 DOM 里的 tab/panel 配对自动接管，加栏位只改 HTML，不要再拆视图；配色只跟随桥写到 `<html data-theme>` 的浅/深色，文案一律走 `pages.fonts.*` 的 i18n，不在 JS 里写死中文） |
+| 面板页面（插件内嵌页面） | `views/fonts/`（一个页面，tab 切换「概览」「T2i 模板」「对接项目」，「对接项目」栏里再用二级 tab 显示上游项目名；栏位切换按 DOM 里的 tab/panel 配对自动接管，加栏位只改 HTML，不要再拆视图；配色只跟随桥写到 `<html data-theme>` 的浅/深色，文案一律走 `pages.fonts.*` 的 i18n，不在 JS 里写死中文；视图的通用规则（bridge、沙箱、接口注册）见 4.10） |
 | HTTP 契约、鉴权、失败透传 | `t2i_plugin/server.py` |
 | 渲染与截图行为、模板处理 | `t2i_core/render.py` |
 | 图片存储与过期 | `t2i_core/storage.py`、`t2i_core/util.py` |
@@ -179,7 +179,7 @@ class T2IServicePlugin(Star):
 |------|------|
 | 模块级常量 | `UPPER_SNAKE`（`PLUGIN_NAME`、`CLEANUP_TICK_SECONDS`） |
 | 私有方法 | `_` 前缀 + `snake_case`（`_status_payload`、`_apply_endpoint_config`） |
-| Web API 方法 | （本插件当前不注册 Web API；若未来新增，用 `web_` 前缀） |
+| Web API 方法 | `page_` 前缀（`page_list`、`page_upload`；面板接口在 `t2i_plugin/font_web.py`、`template_web.py` 注册） |
 | 命令方法 | `cmd_` 前缀（`cmd_status`、`cmd_install`） |
 | 类名 | `PascalCase`（`T2IServicePlugin`、`BrowserManager`、`T2IHttpServer`） |
 | 文件名 | `snake_case`（`browser.py`、`_conf_schema.json`） |
@@ -187,7 +187,7 @@ class T2IServicePlugin(Star):
 ### 4.3 类型与语法
 
 - Python 3.11 现代联合类型写法（`dict | None`、`list[dict]`、`tuple[str, str]`）
-- 函数签名**必须完整类型注解**（参数 + 返回类型）；`yield` 返回结果的命令/事件处理方法标注返回类型（现有命令方法尚未全部补齐，新增的必须补）
+- 函数签名**必须完整类型注解**（参数 + 返回类型）；`yield` 返回结果的命令/事件处理方法标注返回类型（本项目现有写法 `AsyncIterator[MessageEventResult]`，新写的也可用 `AsyncGenerator[MessageEventResult, None]`；现有命令方法尚未全部补齐，新增的必须补）
 - 禁止 `Any` 作为类型注解（除非调用方签名强制要求）
 - 禁止 `# type: ignore`（无理由的类型作弊）
 - 跨模块文件建议 `from __future__ import annotations`（现有模块已普遍如此）
@@ -230,13 +230,60 @@ class T2IServicePlugin(Star):
 - `/t2i_install`（下载约 200 MB）与 `/t2i_restart`（重启服务）已按本条收紧为 ADMIN；`/t2i_status`、`/t2i_test`、`/t2i_fonts` 仍是全员可用（只读或自检）。
 - **新增命令凡涉及下载、重启、写配置的，必须直接加 ADMIN**；再收紧存量命令属于用户可见的行为变更，需要先在提交说明里提出并由用户确认。
 
+### 4.10 插件可视化视图（views/）
+
+**什么时候做视图**：表单复杂、需要状态面板 / 日志 / 文件上传下载 / SSE 实时流 / 图表时做（`views/`）；只是让用户填几个配置项，就用 `_conf_schema.json`，不要为了好看写页面。本项目已有且只需要一个视图 `views/fonts/`（「文转图服务面板」），新能力优先挂进它的栏位，不要轻易新增视图目录。
+
+**目录与启用**
+- `views/<view_name>/index.html` 是唯一入口，没有 `index.html` 的目录会被忽略；`view_name` 用简单目录名（`panel`、`settings`），不要 `.`、`..`、点开头或含 `/`、`\`。
+- **不需要在 metadata 里声明**：AstrBot 自动扫描 `views/`（旧 `pages/` 目录仅作兼容别名，新项目一律用 `views/`）。新增/删除视图目录后要**重载插件**；只改静态资源刷新视图即可。
+- 前端**零构建**：原生 ES module + 自己的 CSS，不引入打包器、npm 依赖与第三方 UI 框架。
+- **`views/` 与 `pages/` 同时存在时只认 `views/`**：把旧页面从 `pages/` 迁到 `views/` 时整目录搬过去，别两处各留一份（另一份会静默不显示）。
+
+**通信只走 bridge**
+- 页面拿到的是 `window.AstrBotPluginView`（别名 `AstrBotPluginPage`），可用：`ready()`、`getContext()`、`getLocale()`、`getI18n()`、`t(key, fallback)`、`onContext(handler)`、`apiGet(ep, params)`、`apiPost(ep, body)`、`upload(ep, file)`（字段名固定 `file`）、`download(ep, params, filename)`、`subscribeSSE(ep, handlers, params)`、`unsubscribeSSE(id)`。
+- **禁止裸 `fetch` / `new EventSource`**：视图跑在沙箱 iframe 里，拿不到 Dashboard 会话与 token，`EventSource` 也带不了鉴权头（必然 401）。
+- **bridge 何时就绪（机制）**：AstrBot 把 SDK 的 `<script>` 注在 `</body>` 之前，也就是**晚于页面里所有内联/同步脚本、早于外部 `type="module"` 脚本**（module 默认 defer）。所以：常规写法用外部 module 脚本；页面首屏就得用 bridge 时，在 `<head>` 里显式写 `<script src="/api/plugin/page/bridge-sdk.js"></script>`（不必自己加 query，服务端会改写）。**别在内联脚本里同步读 `window.AstrBotPluginView`**，那一刻它还不存在。
+- **取不到 bridge 要有兜底**：不要直接 `window.AstrBotPluginView.apiGet(...)`（undefined 会抛裸错）。用 `window.AstrBotPluginView ?? window.AstrBotPluginPage` 取，取不到时：短轮询等一会儿（例如 20 次 × 100ms）或直接抛一句中文提示「请从 AstrBot 插件详情页打开本视图」，让用户知道是入口不对而不是插件坏了。`views/fonts/app.js` 已按这个模式取桥，照它写。
+- 初始化先 `await bridge.ready()` 再渲染；语言/主题变化用 `onContext()` 重新渲染，并在 `beforeunload` 里取消监听与 `unsubscribeSSE`。
+
+**后端接口**
+- `context.register_web_api(f"/{PLUGIN_NAME}/<action>", handler, ["GET"], "接口描述")`，路由**必须带插件名前缀**（本项目实际形如 `/astrbot_plugin_t2i_service/fonts/list`）；视图侧 endpoint 不带前缀（`apiGet("fonts/list")`）。动态段用 `<item_id>`、`<path:name>`，以关键字参数传给 handler。
+- 旧版 AstrBot 没有 `astrbot.api.web` 与 `register_web_api`：注册一律走 `getattr(context, "register_web_api", None)`，取不到就记一条 warning 后跳过，不让插件加载失败（`t2i_plugin/font_web.py`、`t2i_plugin/template_web.py` 现状）。
+- handler 用 `astrbot.api.web` 的 `request` / `json_response` / `error_response` / `file_response` / `stream_response`，不要向业务代码暴露 FastAPI/Quart 原生对象；`request` 只在 handler 执行期间可用，`request.query.get(...)`、`await request.json(default={})`、`await request.files()` 读取入参。
+- 视图专用接口直接返回业务 JSON；需要报错用 `error_response(msg, status_code=400)`（bridge 会 reject）。返回 `{status:"ok",data}` 时 bridge 自动解包成 `data`，别依赖这个兼容行为。
+- SSE：后端 `stream_response()`，每帧以 `\n\n` 结尾；视图侧 `subscribeSSE` 接收，超时/断线由 bridge 管理。
+- 后端仍要校验视图传来的路径、文件名、数值范围（视图侧数据一律不可信）；落盘落在 `get_astrbot_plugin_data_path()` 下的插件数据目录并重命名文件。
+- **上传大小自己限**：Dashboard 只对自家聊天上传路由限制体积（512MB），插件扩展路由没有统一上限；`upload()` 单文件、字段名固定 `file`，后端要自己按 `upload.content_length` 或 `save_upload_stream(..., max_bytes=...)` 卡一道（本项目上限取 `fonts.upload_limit_mb`），再决定报错文案。
+
+**沙箱限制（写页面之前先认清，别事后返工）**
+
+视图由 Dashboard 以 `<iframe sandbox="allow-scripts allow-forms allow-downloads">` 加载，响应头带 `X-Frame-Options: SAMEORIGIN`、`Content-Security-Policy: object-src 'none'; base-uri 'self'`、`Cache-Control: no-store`、`Referrer-Policy: no-referrer`。由此：
+
+- **没有 `allow-same-origin`** → 页面是不透明源：`localStorage` / `sessionStorage` / `indexedDB` / `document.cookie` 一律不可用（直接抛错）。页面状态只能放内存或后端；刷新即丢。
+- **没有 `allow-popups`** → `window.open()`、`<a target="_blank">` 一律被拦。别设计「新标签页打开」：要在别处使用的链接就复制文本、要走下载就用 `bridge.download()`。
+- **不要拿嵌套 `<iframe>` 当主界面**：外层已是受限沙箱，内嵌页面继承同样的限制（无 cookie、无弹窗、无存储），目标站还可能用 `X-Frame-Options: DENY` / `frame-ancestors` 直接拒载；需要外部页面时让用户自己开浏览器，或把那个能力做成插件后端接口。
+- **不能访问父窗口 DOM / Dashboard 存储**（跨源，`window.parent.*` 会直接抛错，父页面只能经 bridge 与你通信）；`object-src 'none'` 表示别用 `<object>`/`<embed>`，`base-uri 'self'` 表示别用 `<base>` 指外部。
+- 页面内容 URL 由 Dashboard 下发（带一次性路径令牌），**不要手动拼内容 URL、不要自己加 `asset_token`、不要用 `..` 跳目录**；SPA 用 hash routing（history routing 刷新时要求该路径真有文件）。
+
+**样式与文案**
+- 颜色/间距走 CSS 变量，`:root` 放亮色、`[data-theme="dark"]` 放暗色（AstrBot 已在 `<html>` 上同步 `data-theme`，服务端预注入避免闪烁）；类名 kebab-case。`views/fonts/style.css` 已按此组织，照着加。
+- 视图标题/描述写 `.astrbot-plugin/i18n/<locale>.json` 的 `views.<view_name>.title` / `.description`，页面内文案用 `bridge.t("views.<view_name>.<key>", fallback)`；改 locale 文件后要重载插件。旧的 `pages.<view_name>.*` 只是兼容键——本项目两份键都已写，新增文案**两个都写**（老 WebUI 不丢标题）。
+- 插入 DOM 的外部文本必须先转义（页面内自备 `escapeHtml()`），不要把后端字符串直接塞进 `innerHTML`。
+
+**自检**：视图没出现 → 检查 `views/<view>/index.html` 是否存在、插件是否启用、详情页是否刷新；bridge 未定义 → 脚本是否外部 module 且在 SDK 之后；接口 404 → 注册路由是否带插件名前缀、endpoint 是否多写了 `/` 或 query；上传为空 → 字段名必须是 `file`；SSE 401 → 是否绕过了 `bridge.subscribeSSE`。
+
 ---
 
 ## 5. 配置与数据文件
 
 ### 5.1 配置 Schema（_conf_schema.json）
 
-顶层六段，与服务分层一一对应：
+- **格式是扁平字典**：顶层 key 就是配置项 key，值是该配置项的 schema 节点。**没有 `fields` 数组、没有 `schemaVersion` 之类的自造外壳**——AstrBot 直接把整个 JSON 当「key → 节点」解析，套错外壳等于没有配置项。分组用 `object` + `items` 嵌套表达，WebUI 按层级展示，不要在 schema 里发明分组字段。
+- 常用节点字段：`type`（必填，`string`/`text`/`int`/`float`/`bool`/`object`/`list`/`dict`/`template_list`）、`description`（WebUI 显示的配置名）、`hint`（右侧问号里的补充说明）、`default`、`options`/`labels`、`slider`（`{"min","max","step"}`，仅 int/float）、`secret`（密钥类字符串遮罩）、`invisible`、`items`（`object`/`dict` 的子 schema）。
+- schema 里有的项**必须**在 README 配置表里出现（漏写 = 文档不全）。
+
+顶层七段，与服务分层一一对应：
 
 | 段 | 关键项 | 说明 |
 |---|---|---|
@@ -246,9 +293,10 @@ class T2IServicePlugin(Star):
 | `endpoint` | `auto_configure`、`service_url`、`current_service_url`（展示用，插件回写） | 是否写 AstrBot 主配置 |
 | `storage` | `image_lifetime_hours`、`cleanup_interval_minutes` | 图片留存与清理 |
 | `fonts` | `enabled`、`github_proxy`、`upload_limit_mb`、`restart_browser_on_change` | 字体供给（下载/上传在插件页面的「文转图服务面板」里做） |
+| `templates` | `refresh_minutes` | 插件自带模板的数据刷新间隔 |
 
 - 新增配置项 → 先在 `_conf_schema.json` 补 schema（type/hint/default/options），再在 `t2i_plugin/config.py` 加 dataclass 字段与默认值，最后补 README 配置表。
-- 配置项在文档（README 配置表、CHANGELOG）中引用时，**中文名在前、英文 key 在后**：统一写成「中文名（`key`）」形式，例如「并发渲染数（`render.concurrency`）」「鉴权令牌（`server.auth_token`）」；中文名取自 `_conf_schema.json` 的 `hint` 字段，`key` 用反引号包裹。
+- 配置项在文档（README 配置表、CHANGELOG）中引用时，**中文名在前、英文 key 在后**：统一写成「中文名（`key`）」形式，例如「并发渲染数（`render.concurrency`）」「鉴权令牌（`server.auth_token`）」；中文名取自 `_conf_schema.json` 对应节点的 `description` 字段（`hint` 是问号提示，不要拿它当配置名），`key` 用反引号包裹。
 
 ### 5.2 配置读取模式
 
@@ -264,6 +312,7 @@ class T2IServicePlugin(Star):
 - 数据目录：`get_astrbot_plugin_data_path() / PLUGIN_NAME`（AstrBot 官方路径函数，可用 `ASTRBOT_ROOT` 覆盖），插件卸载重装不丢。
 - 图片、浏览器都落在该目录下（浏览器目录可用配置 `browser.browsers_path` 另行指定）。
 - 写文件用 `encoding="utf-8"` + `ensure_ascii=False`；原子写入先写 `.tmp` 再 replace。
+- 同一文件的读改写不要交错：写操作持 `asyncio.Lock`（如 `t2i_core/api.py` 的 `rate_limit_lock`）。
 - 过期图片由 `cleanup_expired_files` 按 `storage.image_lifetime_hours` 清理，清理间隔由 `CLEANUP_TICK_SECONDS` 决定。
 
 ### 5.4 写 AstrBot 主程序配置
@@ -285,7 +334,7 @@ await _save_config(core_config)   # 优先 save_config_async，旧版回退同�
 
 ### 6.1 指令注册模式
 
-本项目不使用指令组（`command_group`），四个命令都是扁平注册：
+本项目不使用指令组（`command_group`），五个命令都是扁平注册：
 
 ```python
 @filter.command("t2i_status")
@@ -301,7 +350,35 @@ async def cmd_status(self, event: AstrMessageEvent):
 | `/t2i_status` | 全部 | 查看服务地址、浏览器状态、渲染统计与端点配置 |
 | `/t2i_install` | 管理员（见 4.9） | 下载并安装 Chromium；`/t2i_install mirror` 走国内镜像 |
 | `/t2i_test` | 全部 | 渲染自检卡片并回图，验证整条链路 |
+| `/t2i_fonts` | 全部 | 查看字体目录与 fontconfig 状态，并回一张字体预览图 |
 | `/t2i_restart` | 管理员（见 4.9） | 重启内嵌渲染服务并释放 Chromium |
+
+### 6.3 事件监听
+
+本项目目前**没有**事件监听器（交互全部走 5 个命令）；确实需要被动处理消息时再新增：
+
+```python
+@filter.event_message_type(filter.EventMessageType.ALL)
+async def on_message(
+    self, event: AstrMessageEvent
+) -> AsyncGenerator[MessageEventResult, None]:
+    # 不 yield 结果时返回类型标注 -> None
+    ...
+```
+
+> 监听器同样受 4.7 约束：它起的后台任务要能被 `_closing` 一类标志在插件卸载时终止。
+
+### 6.4 命令表格式（README 中呈现）
+
+README「指令」板块固定三列「命令 / 权限 / 说明」：
+
+| 命令 | 权限 | 说明 |
+|------|------|------|
+| `/t2i_status` | 全部 | 查看服务地址、浏览器状态、渲染统计与端点配置 |
+| `/t2i_install` | 管理员 | 下载并安装 Chromium |
+| `/t2i_test` | 全部 | 渲染自检卡片并回图 |
+| `/t2i_fonts` | 全部 | 查看字体目录并回字体预览图 |
+| `/t2i_restart` | 管理员 | 重启内嵌渲染服务 |
 
 ---
 
@@ -402,6 +479,8 @@ README 的读者是**插件使用者**（服务器管理员、群成员），不
 - **代码只贴用户要用的最小片段**：安装命令、配置项、指令示例；不贴内部实现代码。
 - **技术细节翻译成用户语言**：不写「用 `asyncio.Semaphore` 限制并发」，写「同时渲染的页面数量上限（`render.concurrency`），超出后排队」。
 - 判断标准：使用者只读 README，就能独立完成安装 → 配置 → 使用 → 排障。
+- **安装段落默认一句话**：插件从插件市场 / WebUI 安装页装完即用，不写分步「克隆到某目录 → 重启 → 重载」。本项目例外：Chromium 需要单独下载（`/t2i_install` 或配置页开关）、独立服务形态也要部署说明，这两类属于用户必须做的动作，保留在「安装与首次使用」小节里。
+- **常见问题按需写**：只有用户真的踩到、并且会反复问的排障问题才补「常见问题」小节，一条给一个结论；没有这类问题就不建该小节，也不为凑结构造条目。
 
 > 本项目 README 现状已大体符合，但有一张「官方端点 / 独立容器 / 本插件」对比表与一段上游背景说明，属于功能级对比，可以保留；**不要再往里加架构图、模块职责或渲染流程说明**——那些内容属于 `docs/` 与 `NOTICE`。
 
@@ -415,6 +494,7 @@ README 的读者是**插件使用者**（服务器管理员、群成员），不
 <div align="center">
 <h1>DisplayName</h1>
 <p><strong>插件描述（desc）</strong></p>
+<!-- sub 行只放 2–4 个代表标签（每个主要能力方向各取一个），全量标签留在 metadata.yaml 的 tags -->
 <p><sub>标签1 &nbsp;&nbsp; 标签2 &nbsp;&nbsp; 标签3</sub></p>
 <p><strong>中文</strong> &nbsp;/&nbsp; <a href="README_en.md">English</a></p>
 </div>
@@ -426,6 +506,7 @@ README 的读者是**插件使用者**（服务器管理员、群成员），不
 <div align="center">
 <h1>Plugin Name</h1>
 <!-- 英文 h1 取插件名后缀首字母大写：astrbot_plugin_model_status → Model Status -->
+<!-- sub 行只放 2–4 个代表标签（每个主要能力方向各取一个），全量标签留在 metadata.yaml 的 tags -->
 <p><strong>Plugin description</strong></p>
 <p><sub>tag1 &nbsp;&nbsp; tag2 &nbsp;&nbsp; tag3</sub></p>
 <p><a href="README.md">中文</a> &nbsp;/&nbsp; <strong>English</strong></p>
@@ -437,7 +518,7 @@ README 的读者是**插件使用者**（服务器管理员、群成员），不
 - **中文版 h1**：直接取 `metadata.yaml` 的 `display_name` 字段（本项目为 `文转图服务 (T2I Service)`，取中文主名「文转图服务」）。
 - **英文版 h1**：取插件名 `astrbot_plugin_xxx` 中的 `xxx` 部分，拆分为单词后每个首字母大写。本项目为 `T2I Service`。
 - **desc**：中文版用 `metadata.yaml` 的 `desc` 字段；英文版做地道翻译。
-- **标签（tags）**：取自 `metadata.yaml` 的 `tags` 字段（若有），用 `&nbsp;&nbsp;` 分隔。中文版用中文标签，英文版用英文标签。
+- **标签（tags）**：`metadata.yaml` 的 `tags` 是**全量**清单——各能力方向的关键词都列上（供市场分类与搜索），**不因为 README 头部放不下就删减**；README 头部的 `<sub>` 行**只放代表标签（2–4 个）**，按重要性排序、每个主要能力方向各取一个，只能从 `tags` 里挑（不要新增 `tags` 里没有的标签），用 `&nbsp;&nbsp;` 分隔。中文版用中文标签，英文版用英文标签。
 
 > 本项目现有两个 README 使用 `# 标题` + 一行语言切换的简化头部，与上面的 HTML 头部等价但更朴素；**改头部时保持现有形态即可，不要为了套模板去重排已有文档**。新增插件页面或新插件才从上面的 HTML 头部起步。
 
@@ -454,9 +535,34 @@ README 正文严格按以下 4 大板块组织，但不强制使用 `##` 标题�
 
 注意点：
 
-- 板块 4 是兜底区域，不强制子标题顺序，但**安装/快速开始**建议放在最前。
+- 板块 4 是兜底区域，不强制子标题顺序。**默认不写分步「安装/快速开始」**（见 7.2.1；本项目保留「安装与首次使用」，因为 Chromium 要单独下载）。
+- **版本与协议端都不是必写项**：能由 `metadata.yaml` 的 `astrbot_version` 表达的最低版本要求，不在 README 重复一遍；只有 metadata 表达不了的**明确限制**才写（某功能需要更高版本、只支持某几个协议端、需要特定部署方式），一两句说完。没有这类限制就不建「前提」小节，也不为凑结构写「需要 AstrBot 4.x」这种空话。**`astrbot_version` 本身也只在能明确最低支持版本时才填**——说不准就不填，不要写估算范围。
 - **板块一/板块四只写用户视角**：写「运行环境与依赖要求」而非框架选型理由、架构分层、模块职责；实现原理一律不进 README（写作视角见 7.2.1）。
 - 更新后通读一遍 README，确保与新行为一致（示例：默认值、超时说明、数据目录、上游归属说明等）。
+- **许可证**：默认不写许可证章节（含小节、徽章、许可证名标注）。本项目例外——仓库是 `astrbot-t2i-service` 的 fork，Apache-2.0 与上游归属必须写明，保留现有「许可证与鸣谢」小节，但不要往里再堆别的许可证信息。
+
+**配置板块怎么写（板块三）**：
+
+- **配置表是备查资料，不是配置入口**：用户在 WebUI 插件详情页的设置里直接改配置、改完即时生效，很少专门翻 README 找配置项——阈值放低，说明列写短，只讲「这一项控制什么」。
+- 配置少就不分类：**≤ 4 项**直接一张表，不为了对称硬拆小节。
+- 更多就按类别分组：每类一个 `###` 子标题 + 该类一张表，顺序按用户上手顺序（基础/常用在前，进阶/排障在后）；分类要与 `_conf_schema.json` 的真实结构对得上（顶层 key 与 `object` 分组），不要写出 WebUI 里根本不存在的分组。本项目 README 已按 `_conf_schema.json` 的 7 段分组，新增配置项挂进对应小节即可。
+- **单类 ≥ 4 项就折叠**，或属于纯参考内容（逐字段明细、平台对照表、模板变量）时，把该类整表包进 `<details>` 折叠，`<summary>` 自解释（类别名 + 项数）：
+
+```markdown
+<details>
+<summary>渲染行为（7 项）</summary>
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| 并发渲染数（`render.concurrency`） | int | 1 | 同时渲染的页面数量上限，超出后排队 |
+
+</details>
+```
+
+- **关键配置不进折叠**：首次使用必须填的（功能总开关、浏览器下载地址）留在外面；折叠只装「不读也能用」的参考内容。
+- **折叠在 WebUI 会降级**：AstrBot 插件详情页内嵌的 README 会过滤 `details`/`summary` 标签（README 弹窗与 GitHub 正常折叠），折叠块在那里变成普通文字、表格照常显示——因此折叠内容必须自洽可读，不能靠折叠藏必要信息。
+- 表格列固定「配置项 / 类型 / 默认值 / 说明」；配置项写「中文名（`key`）」（见 5.1），类型全篇统一（写 schema 的 `type`，或写 WebUI 里的中文类型），不要一张表里混用两种写法。
+- 存量 README 的配置表目前都没折叠（各段 2–8 项），**不为套规则重排**；下次改动该小节、单类到 4 项时再折叠。
 
 #### 7.2.4 何时必须更新 README
 
@@ -465,8 +571,9 @@ README 正文严格按以下 4 大板块组织，但不强制使用 `##` 标题�
 | 功能新增/删除 | 一、功能/介绍 |
 | 使用方式/命令变化 | 二、指令 |
 | 配置项变化 | 三、配置 |
-| 依赖/版本要求变化 | 四、其它（安装/依赖部分） |
-| 已知问题/行为变化 | 四、其它（常见问题部分） |
+| 依赖/版本要求变化 | 四、其它（确有需要提前告知的限制），能明确最低版本时同步 `metadata.yaml` 的 `astrbot_version` |
+| 已知问题/行为变化（用户会踩到时） | 四、其它（常见问题部分，按需新增） |
+| 视图页面新增/改名/删除 | 一、功能/介绍（说明入口位置），并同步 `.astrbot-plugin/i18n` 的 `views.*` 标题 |
 
 **何时不需要更新 README：**
 
@@ -553,6 +660,10 @@ README 正文严格按以下 4 大板块组织，但不强制使用 `##` 标题�
 - [ ] 权限：新增的下载/重启/写配置类命令已加 `@filter.permission_type(filter.PermissionType.ADMIN)`
 - [ ] CHANGELOG：`[Unreleased]` 已追加条目，**只写相对上一版的变化**、同一变化已合并为一条（无重复条目），条目面向用户（无内部实现细节、无复杂形容即可看懂），保留了他人的既有记录
 - [ ] README：涉及用户可见变更时已同步更新（中文先落，再同步英文），且面向用户书写（无实现原理与内部细节）
+- [ ] README 配置板块：> 4 项时已按类别分组，单类 ≥ 4 项已折叠且 summary 自解释，首次必填的关键配置没被藏进折叠
+- [ ] 标签：`metadata.yaml` 的 `tags` 是全量能力关键词（未因 README 只显示代表标签而删减）；中英两份 README 头部只放 2–4 个代表标签，且都能在 `tags` 里找到
+- [ ] 版本与限制：README 未重复 `astrbot_version` 已能表达的最低版本，也没有为凑结构写安装步骤或常见问题
+- [ ] 视图（改动或新增 `views/` 时）：通信只走 bridge（无裸 `fetch`/`EventSource`）、脚本是外部 `type="module"` 或在 head 里显式引入 SDK、取不到桥有兜底、未用 `localStorage` 与 `target="_blank"`、上传自限体积、文案已进 `.astrbot-plugin/i18n` 的 `views.*`（`pages.*` 兼容键同步写）
 - [ ] 版本号：日常任务不递增版本号；仅发版任务改 `metadata.yaml` 的 `version`（与 CHANGELOG 新版本段、tag 一致），并把 README 徽章、i18n 等辅助位置同步到同一版本号
 - [ ] 提交信息：Conventional Commits 格式（`type: 中文短句式`）
 - [ ] 提交前展示：已给出待提交文件清单、`git diff --stat`、2–3 个候选提交标题（逐条注明侧重并标出推荐项），并取得用户对本次改动的明确确认（一次性授权，未沿用上一轮）
