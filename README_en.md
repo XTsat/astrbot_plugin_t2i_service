@@ -1,22 +1,22 @@
 <div align="center">
 <h1>AstrBot T2I Service</h1>
 <p><strong>HTML/template to image rendering inside the AstrBot process, ready to serve as AstrBot's text-to-image endpoint with no extra container; includes Chromium download, status detection and orphan-process cleanup.</strong></p>
-<p><sub>text-to-image &nbsp;&nbsp; t2i &nbsp;&nbsp; rendering</sub></p>
+<p><sub>text2image &nbsp;&nbsp; t2i &nbsp;&nbsp; rendering</sub></p>
 <p><a href="README.md">中文</a> &nbsp;/&nbsp; <strong>English</strong></p>
 </div>
 
 ## Features
 
-The rendering engine is ported from [astrbot-t2i-service](https://github.com/AstrBotDevs/astrbot-t2i-service): no extra container to deploy, AstrBot's text-to-image works out of the box, and HTML / Jinja2 templates are rendered into images inside AstrBot itself.
+Renders HTML / Jinja2 templates into images inside the AstrBot process and serves them as AstrBot's text-to-image endpoint; the rendering engine is ported from [astrbot-t2i-service](https://github.com/AstrBotDevs/astrbot-t2i-service).
 
-- **No extra container**: the render service runs inside the AstrBot process — no Docker, no port mapping, no image to maintain.
-- **Browser in one step**: turn on **Download Chromium** in the config and save (npmmirror mirror by default, ~200 MB); an existing system Chromium can be pointed at instead.
-- **Missing libraries installed for you**: when Chromium is downloaded but cannot launch (missing `libnspr4` and friends), the plugin finds out which libraries are missing and installs them; if the environment does not allow it, you get the exact command to run.
-- **Fonts bundled with the plugin**: missing fonts no longer need to be installed system-wide — download the preset families, paste a font link, or upload your own file from the plugin page, then render a preview card to confirm they took effect.
-- **Templates in one click**: the **T2I templates** tab shows a real render, the source and the size of every template; hit **Apply** and AstrBot's text-to-image template switches to it, and switching again later takes effect on the next message.
-- **No endpoint to copy by hand**: optionally the plugin writes its own address into AstrBot's text-to-image config, together with the text-to-image output switch.
-- **Rendering stays available**: while local rendering is unavailable (for example before Chromium is installed), requests are proxied to the fallback endpoint and the image is stored locally before it is handed to AstrBot.
-- **Status at a glance**: `/t2i_status` reports the service, the browser, system libraries, the endpoint and render stats; `/t2i_test` renders a card on the spot so you can see whether the chain works.
+- **No extra container**: rendering runs inside the AstrBot process — no Docker, no port mapping, no image to maintain.
+- **Browser in one step**: turn on **Download Chromium** in the config and save to install it in the background (~200 MB, npmmirror by default); an existing system Chromium can be pointed at instead.
+- **Missing libraries installed for you**: when the browser is installed but cannot launch (missing `libnspr4` and friends), the plugin installs them; if the environment does not allow it, you get the exact command to run.
+- **Fonts bundled with the plugin**: no system-wide font installation — download the preset families, paste a link, or upload your own file from the plugin page.
+- **Templates in one click**: the **T2I templates** tab shows a real render, the source and the size of every template; hit **Apply** and AstrBot's text-to-image template switches to it.
+- **No endpoint to copy by hand**: optionally the plugin writes its own address into AstrBot's text-to-image config, together with the output switch.
+- **Rendering stays available**: while local rendering is unavailable, requests are proxied to the fallback endpoint so text-to-image keeps working in chat.
+- **Status at a glance**: `/t2i_status` reports the service, the browser, system libraries, the endpoint and render stats; `/t2i_test` renders a card on the spot.
 - **Same interface as upstream**: AstrBot and any compatible client need no code changes.
 
 | | Public endpoint | Self-hosted service | This plugin |
@@ -26,121 +26,129 @@ The rendering engine is ported from [astrbot-t2i-service](https://github.com/Ast
 | Chromium supply | remote side | maintain your own image | one-click download in the config |
 | Upgrades with AstrBot | unrelated | manual | follows AstrBot |
 
+Fonts and text-to-image templates are managed on the plugin page at WebUI plugin details → **T2I Service Panel** (three tabs: Overview, T2I templates, Upstream project).
+
+### Fonts
+
+Templates ask for family names such as `Noto Serif SC` or `Inter`, which a server may not have; without them the template falls back to a default font and the layout drifts. This plugin supplies the fonts too: **no template edits and no system-wide font installation**.
+
+**Overview**
+
+- **Upload your own font**: pick a file on the page; it is validated as a real font, and `fonts.upload_limit_mb` caps the size.
+- **Download from a link**: paste any direct font URL (`.ttf` / `.otf` / `.ttc`).
+- **Check it actually works**: **Render preview** draws the same sentence once per family — a row that looks like the others tells you that font is not in effect; pick a few families to compare only those, or type the characters you want to compare.
+- **Changes apply immediately**: adding or removing fonts restarts the render process; **Reload fonts** does the same on demand.
+
+**Upstream project**
+
+- **Preset families, one click**: the list is grouped by family (Noto Sans/Serif for SC/TC/JP, Inter, JetBrains Mono, LXGW WenKai and more); hit download and it installs, no restart needed afterwards.
+- **Whole template in one click**: for [astrbot_plugin_qq_group_daily_analysis](https://github.com/SXP-Simon/astrbot_plugin_qq_group_daily_analysis/blob/main/docs/T2I_FONTS.md) (QQ group daily analysis) pick a template name (Layout, Scrapbook, Spring Festival, ATRI ...) to install everything it needs, with anything still missing marked.
+
+### Text-to-image templates
+
+The **T2I templates** tab turns AstrBot's text-to-image templates into cards: each shows a real render, its source, size and available variables, with an **Apply** button on the right; click an image to zoom in.
+
+- **One-click apply**: **Apply** makes that template AstrBot's active one and wires the strategy and endpoint for you; the first apply needs one AstrBot restart, after which switching is instant.
+- **Go back**: change the active template to a stock one in AstrBot's config page; the plugin will not override your choice.
+- **Where templates come from**: each card is marked **Built-in** (shipped with AstrBot), **Plugin** (shipped with this plugin) or **Custom** (your own); on a name clash yours wins.
+- **Two diary templates ship with the plugin**: 今日の手記 and 今日の日記, taken from [astrbot_plugin_atrifeed](https://github.com/Heximiao/astrbot_plugin_atrifeed) (AGPL-3.0): the date, weekday and character count fill themselves in at render time, the body is rendered as Markdown, and they work without internet access. The faces they were designed for (`Yu Mincho`, KaiTi, Microsoft YaHei) are commercial fonts the plugin does not download — install the similar open families under **Upstream project** instead; if they are missing on apply, the dialog explains it and offers **Download fonts and apply** or **Ignore and apply**.
+- **Build your own**: **New template** starts from a blank scaffold, a copy of an existing template or pasted HTML, and names may only use letters, digits, underscores and dashes. Templates can then be edited, given a display name, previewed while editing, re-rendered and deleted (removing an edited copy of a shipped template restores the original). **Preview sample text** at the bottom swaps the text used by the previews only.
+
 ## Commands
 
-**Installing needs no command**: turn on **Download Chromium** in the WebUI plugin config page and save — the download and install start in the background (npmmirror by default, ~200 MB), the switch turns itself off when it finishes, and **Chromium ready** on the same page shows the result. The commands below are the chat-side entry points for the same capabilities; either route works.
+**Installing needs no command**: turn on **Download Chromium** in the WebUI plugin config page and save — the download and install start in the background, the switch turns itself off when it finishes, and **Chromium ready** on the same page shows the result. The commands below are the chat-side entry points for the same capabilities; either route works.
 
 | Command | Permission | Description |
 | --- | --- | --- |
-| `/t2i_status` | everyone | Embedded service address, Chromium and system library state, render stats, plus AstrBot's current text-to-image endpoint and output switch |
-| `/t2i_install` | administrators | Download and install Chromium; when the browser is present but system libraries are missing it installs those instead, streaming progress as it goes |
+| `/t2i_status` | everyone | Service address, browser and system library state, render stats, plus AstrBot's current endpoint and output switch |
+| `/t2i_install` | administrators | Download and install Chromium; installs missing system libraries instead when needed |
 | `/t2i_test` | everyone | Render a self-check card and send it back to verify the whole chain |
 | `/t2i_restart` | administrators | Restart the embedded render service and release Chromium |
 | `/t2i_fonts` | everyone | Show the font directory and render a font preview card |
 
-For a first run entirely in chat, go `/t2i_status` → `/t2i_install` → `/t2i_test`: see what is missing, install it, then render one image to confirm.
-
-## Fonts
-
-Templates ask for family names such as `Noto Serif SC` or `Inter`, which a server may not have; without them the template silently falls back to a default font and the layout drifts. This plugin supplies fonts as well: font files live under `fonts/` in the plugin data directory and Chromium picks them up while rendering — **no template edits and no system-wide font installation**.
-
-Where: WebUI plugin details → the **T2I Service Panel** page. It has three tabs: **Overview** (font library stats and job progress, plus upload, link, delete and preview), **T2I templates** (renders and one-click apply for AstrBot's text-to-image templates, see [Text-to-image templates](#text-to-image-templates)) and **Upstream project** (whole template sets and the single-family list for the project it integrates with, with a second-level tab naming the project); the text inside each tab links to the other one, and the page says so when `fonts.enabled` is off. The page follows the AstrBot console: colors track its light/dark theme and the copy follows the interface language (Chinese/English); a row of chips at the top shows whether fonts are in effect and any running job, and a failed load explains why and offers **Retry**.
-
-**Overview** (stats, jobs, upload, download by link, delete, preview)
-
-- **Upload your own font**: pick a file on the page; the file is validated as a real font, and `fonts.upload_limit_mb` caps the size.
-- **Download from a link**: paste any direct font URL (`.ttf` / `.otf` / `.ttc`).
-- **Check it actually works**: **Render preview** draws a comparison card — the same sentence once per family, so a row that looks like the others tells you that font is not in effect. The installed family names are listed above the button: pick a few to compare just those, or pick none to compare every installed font. The text box takes whatever characters you want to compare (leave it empty for the default sentence). The resolution menu offers Standard/High/Ultra — sharper costs a bigger image. The weight menu shows both weights, regular only, or bold only; both lines share one font size so the weight difference is easy to see.
-- **Changes apply immediately**: adding or removing fonts makes the plugin restart its render process (Chromium only reads fonts at launch); **Reload fonts** does the same on demand.
-
-**Upstream project** (presets and whole templates)
-
-- **Preset families, one click**: the list is grouped by family (Noto Sans/Serif for SC/TC/JP, Inter, JetBrains Mono, LXGW WenKai and more). Hit download and a progress bar plus live log follow along; nothing needs restarting afterwards.
-- **Whole template in one click**: for [astrbot_plugin_qq_group_daily_analysis](https://github.com/SXP-Simon/astrbot_plugin_qq_group_daily_analysis/blob/main/docs/T2I_FONTS.md) (QQ group daily analysis) the font requirements of each report template are already mapped — pick a template name (Layout, Scrapbook, Spring Festival, ATRI ...) to install everything it needs, with anything still missing marked.
-
-The directory layout is one subdirectory per family, with license files such as `OFL.txt` kept next to the font so the origin travels with it. Direct GitHub access is very slow in mainland China, so preset fonts go through built-in mirrors and acceleration prefixes first — even 20+ MB CJK fonts download fine; you can supply your own prefix in the config page.
-
-## Text-to-image templates
-
-Which HTML template AstrBot uses to turn long text into an image is a config value, and a template file tells you nothing about how it looks. The **T2I templates** tab turns that into something you can pick from: one card per template, with a real render on top (produced by the same rendering chain, using a fixed Markdown sample — headings, lists, quote, table, code block) and, underneath, the name, source, size, last-modified date and the variables the template can use; the **Apply** button sits on the right. Click an image to zoom in.
-
-- **One-click apply**: the plugin copies the template into its own slot, `t2i_service_plugin`, then points AstrBot's active template at that slot, sets the strategy to remote and the endpoint to this plugin — no hunting for template names or copying addresses in the config page.
-- **Switching needs no restart**: the first apply needs one AstrBot restart (it only reads the template name at startup); after that, applying another template takes effect on the next message.
-- **Easy to go back**: to return to a stock AstrBot template, change the active template in AstrBot's config page — the plugin will not override your choice.
-- **Where templates come from**: each card names its source — the ones shipped with AstrBot (default / PowerShell / VitePress) are **Built-in**, the ones this plugin ships are **Plugin**, and your own are **Custom**. On a name clash yours wins, then the plugin's.
-- **Two diary templates ship with the plugin**: **今日の手記** (a diary page) and **今日の日記** (a bound notebook), taken from [astrbot_plugin_atrifeed](https://github.com/Heximiao/astrbot_plugin_atrifeed) (by Heximiao, AGPL-3.0) and adapted to AstrBot's rendering chain: the date, weekday, character count and render time fill themselves in at render time, the memory card summarises the first line of the message, and the body is rendered as Markdown (bold, headings, lists, quotes, code blocks and tables all come through; the renderer ships with the template, so it still works on a server without internet access). The templates keep their original styling; only the variable plumbing changed (AstrBot supplies `{{ text }}` and `{{ version }}`, while the date, weather, character count and mood that the upstream plugin computed itself are filled in by a small script at render time). Fonts follow the originals too: the templates list `Yu Mincho` and friends first (a server that really has them gets the closest match), then the families the panel can download (`Noto Serif JP`, `Noto Sans JP`, LXGW WenKai), then the system CJK fonts — so nothing breaks when the fonts are missing, the glyphs just differ. When you press **Apply** and those fonts are not installed yet, the dialog first names the faces the template was designed for (`Yu Mincho`, `KaiTi`, `FangSong`, `Microsoft YaHei` — bundled with Windows / macOS and usually missing on a Linux server), then the openly licensed substitutes this machine lacks. It offers **Download fonts and apply** or **Ignore and apply**, the latter spelling out what you give up. If the server already has the original faces, no dialog appears. The one-click set lives under **Upstream project → T2i templates**; to install just one family, use **Overview → Single font family**. The original faces (Yu Mincho, KaiTi, Microsoft YaHei) are commercial fonts and are not downloadable here, but there are three workarounds: a server that already has them uses them first; you can upload your own licensed files; and once the matching open fonts are installed, the generated fontconfig maps the original names onto them (Yu Mincho → Noto Serif JP, KaiTi → LXGW WenKai, Microsoft YaHei → Noto Sans SC), so **any** template naming them gets a close match.
-- Licence and source: these two templates are licensed under AGPL-3.0 on their own terms — an AGPL-3.0 chip shows on each card and the **Apply** dialog repeats it, while the line "版式源自 Heximiao / astrbot_plugin_atrifeed" under each card links straight to the upstream repository.
-- The weather and mood card are kept as in the originals: the weather settles on one of that plugin's five states **per day** (it stays put when the same message is rendered again the same day and changes when the date rolls over, while the template previews in the panel keep re-rolling it), and the mood card shows one of two embedded photos — a cheerful one, or a tired one when the weather is overcast or rainy — next to a random line from the original plugin's catchphrase list ("今日も高性能です！", "海风正好，适合记录今天。" ...). The two faint side illustrations come bundled as well (cropped and embedded), keeping their original position, size and opacity.
-- **Build your own**: **New template** at the top right of the tab starts you from a blank scaffold, a copy of an existing template, or HTML you paste in; the template shows up in the list right away, and **Edit** on any card lets you change its content and save. Names may only use letters, digits, underscores and dashes, and the file lands in AstrBot's `data/t2i_templates/`.
-- **Preview while you edit**: **Preview current content** inside the edit dialog renders the HTML you have typed so far, without saving first; for a new template with an empty editor it previews the starting content you picked. Hit **Collapse** to keep editing — the preview only produces an image, it neither saves nor overwrites any template.
-- **Name the card yourself**: fill in **Display name** when creating or editing and the card shows that name (any language); it is stored apart from the file name, so renaming the card never disturbs what AstrBot already uses, and leaving it empty falls back to the template's own title.
-- **Delete what you no longer need**: open **Edit** on a custom template — **Delete** sits at the bottom left of that dialog (click twice to confirm). Templates shipped with AstrBot or with this plugin cannot be deleted themselves, but the copy you get after editing one can be — removing it brings the shipped version back.
-- **Look before you switch**: **Re-render** on a card redraws its preview from the current template content, so an edited template shows its new look right away.
-- **Change the text shown in previews**: **Preview sample text** at the bottom of the **T2I templates** tab replaces the Markdown used by the preview renders — put in a message you actually send (headings, lists, tables, code blocks all work), save, and every card re-renders with it; **Restore default** brings the built-in sample back. It only affects previews; real output still renders the incoming message.
+For a first run entirely in chat, go `/t2i_status` → `/t2i_install` → `/t2i_test`.
 
 ## Configuration
 
-The plugin config page shows the five groups below; the **Default** column is what takes effect right after installation.
+The plugin config page shows the seven groups below; each group lists its common options and folds the rest. The **Default** column is what takes effect right after installation.
 
 ### Install Chromium (`browser`)
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| Download Chromium (`download_chromium`) | switch | off | Turn it on and save to download in the background — no command needed; the switch turns itself off once the download ends (success or failure), and turning it on again when Chromium is ready does not re-download |
-| Chromium ready (`chromium_ready`) | switch | off | Written by the plugin from the real browser state, display only: on means you can render right away; manual edits are overwritten on the next start |
-| Browser install directory (`browsers_path`) | text | empty | Empty uses `browsers/` inside the plugin data directory, which survives reinstalling the plugin |
-| Playwright download host (`download_host`) | text | `https://cdn.npmmirror.com/binaries/playwright` | npmmirror by default, faster in mainland China; leave empty for the official CDN |
-| Custom Chromium executable (`executable_path`) | text | empty | Fill in to reuse a Chromium that already exists on the system or in another container; the plugin then skips downloading |
-| Install missing system libraries automatically (`auto_install_deps`) | switch | on | Installs missing libraries on demand; needs root plus `apt-get`/`dnf`, and degrades to a hint when unavailable |
-| Clean up leftover Chromium on startup (`cleanup_orphans`) | switch | on | A killed plugin may leave browser processes behind; they are reclaimed on the next start |
+| Download Chromium (`download_chromium`) | switch | off | Turn it on and save to install in the background; the switch turns itself off when done |
+| Chromium ready (`chromium_ready`) | switch | off | Display only; manual edits are overwritten |
+
+<details>
+<summary>Install source and advanced options (6)</summary>
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| Browser install directory (`browsers_path`) | text | empty | Empty uses the plugin data directory, which survives reinstalling |
+| Playwright download host (`download_host`) | text | `https://cdn.npmmirror.com/binaries/playwright` | npmmirror by default; empty uses the official CDN |
+| Custom Chromium executable (`executable_path`) | text | empty | Fill in to reuse an existing Chromium; the plugin then skips downloading |
+| Install missing system libraries automatically (`auto_install_deps`) | switch | on | Installs missing libraries on demand (needs root plus `apt-get`/`dnf`) |
+| Clean up leftover Chromium on startup (`cleanup_orphans`) | switch | on | Reclaims browser processes left behind by a killed plugin |
 | Browser install timeout (`install_timeout_seconds`) | number | `900` | Raise it on a slow network; in seconds |
+
+</details>
 
 ### Embedded render service (`server`)
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| Enable the embedded render service (`enabled`) | switch | on | When off, only the commands remain and no port is opened (deploy a standalone service in that case) |
-| Listen address (`host`) | text | `127.0.0.1` | The plugin runs inside AstrBot, so loopback is enough; switch to `0.0.0.0` only when a machine or container outside AstrBot must reach it, and set an auth token as well |
-| Listen port (`port`) | number | `8999` | Matches upstream; after changing it, update AstrBot's text-to-image endpoint too |
-| Auth token (`auth_token`) | text | empty | Empty means no check; when set, requests must carry `Authorization: Bearer <token>` |
-| Proxy to the upstream public endpoint when local rendering fails (`fallback_enabled`) | switch | on | For example before Chromium is ready, requests are forwarded to the fallback endpoint so text-to-image keeps working |
-| Fallback endpoint (`fallback_endpoint`) | text | `https://t2i.rcfortress.site/text2img` | Must include `/text2img`; the image is downloaded locally before it is returned, and a self-hosted URL works too |
+| Enable the embedded render service (`enabled`) | switch | on | When off, only the commands remain and no port is opened |
+| Listen port (`port`) | number | `8999` | Matches upstream; update AstrBot's endpoint after changing it |
 
-### Wire into AstrBot (`endpoint`)
+<details>
+<summary>Connection and fallback (4)</summary>
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| Current plugin address (`current_service_url`) | text | empty | Written by the plugin from the listen address and port (default `http://127.0.0.1:8999/text2img`); copy it into AstrBot's text-to-image API address. Display only — manual edits are overwritten on the next start |
-| Write AstrBot's text-to-image endpoint on startup (`auto_configure`) | switch | off | Writes the address above and sets the strategy to `remote`; restart AstrBot to apply |
-| Also turn on the text-to-image output switch (`enable_t2i_output`) | switch | on | Nothing is rendered while AstrBot's output switch (`t2i`) stays off; this makes the auto-write turn it on. Turn it off to change the address only |
-| Endpoint address to write (`service_url`) | text | empty | Only needed when AstrBot reaches the plugin through another host or port; empty derives it from the listen address |
+| Listen address (`host`) | text | `127.0.0.1` | Loopback is enough; use `0.0.0.0` with a token when exposing it |
+| Auth token (`auth_token`) | text | empty | Empty means no check; when set, requests must carry a `Bearer` token |
+| Proxy to the upstream public endpoint when local rendering fails (`fallback_enabled`) | switch | on | Forwards to the fallback endpoint so text-to-image keeps working |
+| Fallback endpoint (`fallback_endpoint`) | text | `https://t2i.rcfortress.site/text2img` | Must include `/text2img`; a self-hosted URL works too |
+
+</details>
+
+### Wire into AstrBot (`endpoint`)
+
+Every option here is needed on the wiring path, so they are all listed directly.
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| Current plugin address (`current_service_url`) | text | empty | Filled in for copying; manual edits are overwritten |
+| Write AstrBot's text-to-image endpoint on startup (`auto_configure`) | switch | off | Writes the endpoint and sets the strategy to `remote` |
+| Also turn on the text-to-image output switch (`enable_t2i_output`) | switch | on | Turns the output switch on too, without which nothing renders |
+| Endpoint address to write (`service_url`) | text | empty | Only needed when AstrBot reaches the plugin via another host/port |
 
 ### Rendering (`render`)
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| Concurrent renders (`concurrency`) | number | `2` | Upper bound of pages rendered at the same time; extra requests queue. 1–4 is recommended, larger values eat memory |
-| Launch Chromium with `--no-sandbox` (`no_sandbox`) | switch | on | The official AstrBot image runs as root, where Chromium only starts with `--no-sandbox`; turn it off for a non-root deployment that wants the sandbox |
-| Close Chromium after being idle (`idle_timeout_seconds`) | number | `300` | Frees process memory; the next render pays a ~1–2 s cold start. `0` never closes it |
-| Warm the browser up on startup (`prelaunch`) | switch | off | The first request skips the cold start, at the cost of one Chromium process staying resident |
-| Default output format (`default_type`) | dropdown | `jpeg` | Used when the request has no `options.type`; `jpeg` is smaller, `png` is sharper |
-| Default JPEG quality (`default_quality`) | number | `40` | `0`–`100`, jpeg only; 40–80 is a good balance |
-| Full-page screenshots by default (`full_page`) | switch | on | Off captures only the viewport (1080p tall by default), so long text may be cut off |
+| Concurrent renders (`concurrency`) | number | `2` | Upper bound of pages rendered at once; extra requests queue. 1–4 is recommended |
+| Launch Chromium with `--no-sandbox` (`no_sandbox`) | switch | on | Required for root deployments; turn off only for non-root with a sandbox |
 
-### Templates (`templates`)
+<details>
+<summary>Other rendering options (5)</summary>
 
-Only applies to the two diary templates that ship with the plugin; the template previews in the panel are unaffected and keep re-rolling every time.
-
-| Option | Type | Default | Notes |
+| Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| Plugin template refresh interval (`refresh_minutes`) | number | `15` | How often the weather, mood photo and catchphrase on the card are refreshed: renders within one interval stay identical, and it changes when the interval rolls over. Accepts 1–1440 minutes; press **Apply** again after changing it so the template file picks up the new value |
+| Close Chromium after being idle (`idle_timeout_seconds`) | number | `300` | Closes it to free memory; `0` never closes it |
+| Warm the browser up on startup (`prelaunch`) | switch | off | Skips the cold start on the first request, at the cost of a resident process |
+| Default output format (`default_type`) | dropdown | `jpeg` | Used when the request has no `options.type` |
+| Default JPEG quality (`default_quality`) | number | `40` | `0`–`100`, jpeg only |
+| Full-page screenshots by default (`full_page`) | switch | on | Off captures only the viewport, so long text may be cut off |
+
+</details>
 
 ### Image cleanup (`storage`)
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| Image retention (`image_lifetime_hours`) | number | `24` | AstrBot copies images away after fetching them; expired images on the plugin side are deleted on a timer |
-| Cleanup interval (`cleanup_interval_minutes`) | number | `60` | Informational only: the plugin actually checks every minute and deletes expired files |
+| Image retention (`image_lifetime_hours`) | number | `24` | How long rendered images are kept before deletion |
+| Cleanup interval (`cleanup_interval_minutes`) | number | `60` | Informational only; cleanup runs on a minute-level check |
 
 ### Fonts (`fonts`)
 
@@ -148,28 +156,41 @@ Downloading, uploading and removing font files all happen on the **T2I Service P
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| Enable font supply (`enabled`) | switch | on | When off, no font config is generated, `fonts/` is ignored, and the page's download/upload endpoints are disabled |
-| GitHub download acceleration prefix (`github_proxy`) | text | empty | Built-in jsDelivr mirror and two acceleration prefixes are already tried when empty; fill your own prefix (`https://your-prefix/`) only if none of them work |
-| Per-file upload limit (`upload_limit_mb`) | number | `128` | Size cap for uploads and link downloads; CJK fonts are commonly 10–30 MB |
-| Restart the browser after font changes (`restart_browser_on_change`) | switch | on | Chromium reads fonts at launch, so the render process must restart before new fonts apply; when off it waits until the browser is reclaimed while idle |
+| Enable font supply (`enabled`) | switch | on | When off, fonts are not loaded and the page's download/upload endpoints stop working |
 
-## Install and first run
+<details>
+<summary>Download and activation (3)</summary>
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| GitHub download acceleration prefix (`github_proxy`) | text | empty | Only needed when the built-in mirrors all fail |
+| Per-file upload limit (`upload_limit_mb`) | number | `128` | Size cap for uploads and link downloads |
+| Restart the browser after font changes (`restart_browser_on_change`) | switch | on | New fonts only apply after the render process restarts |
+
+</details>
+
+### Templates (`templates`)
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| Plugin template refresh interval (`refresh_minutes`) | number | `15` | How often the weather, mood photo and catchphrase change (1–1440 minutes); press **Apply** again to take effect |
+
+## Other
+
+### Install and first run
 
 1. Install the plugin from the AstrBot WebUI plugin market, or drop this repository into `data/plugins/astrbot_plugin_t2i_service` (the directory name must match the plugin name).
-2. Installation only `pip install`s `playwright` (~40 MB Python package); Chromium is **not** downloaded automatically.
-3. Restart AstrBot and confirm **Enable the embedded render service** is on and **Listen port** is `8999` (or a port of your choice).
-4. Turn on **Download Chromium** in the plugin config and save to download and install in the background (~200 MB, npmmirror by default); `/t2i_install` in chat does the same. If the container lacks system libraries, the same flow installs them next.
-5. Run `/t2i_test` to verify rendering; text-to-image is ready once it succeeds. To let the plugin take over AstrBot's endpoint, also turn on **Write AstrBot's text-to-image endpoint on startup**.
+2. Restart AstrBot and confirm **Enable the embedded render service** is on and **Listen port** is `8999` (or a port of your choice).
+3. Turn on **Download Chromium** in the plugin config and save to install it in the background (~200 MB, npmmirror by default); `/t2i_install` in chat does the same. Missing system libraries are installed next.
+4. Run `/t2i_test` to verify rendering; to let the plugin take over AstrBot's endpoint, also turn on **Write AstrBot's text-to-image endpoint on startup**.
 
-Rendered images land in the plugin data directory `data/plugin_data/astrbot_plugin_t2i_service/data/` and are deleted after 24 hours by default; Chromium lands in `browsers/` in the same directory.
-
-## Pointing AstrBot at this plugin
+### Pointing AstrBot at this plugin
 
 The plugin exposes the same text-to-image endpoint as upstream, and AstrBot has to know its address:
 
 - **Find the address**: **Current plugin address** under **Wire into AstrBot** is exactly what belongs in AstrBot's text-to-image API address (default `http://127.0.0.1:8999/text2img`, updated automatically when you change the listen address or port).
-- **Automatic**: turn on **Write AstrBot's text-to-image endpoint on startup**; the plugin writes that address and switches to the remote strategy. AstrBot's text-to-image output switch (`t2i`) is controlled by **Also turn on the text-to-image output switch** (on by default) — nothing is rendered while the output switch stays off.
-- **Manual**: in AstrBot's `data/cmd_config.json`:
+- **Automatic**: turn on **Write AstrBot's text-to-image endpoint on startup**; the plugin writes that address and switches to the remote strategy. AstrBot's output switch is controlled by **Also turn on the text-to-image output switch** (on by default).
+- **Manual**: make sure AstrBot's config has the three values below, then restart:
 
 ```jsonc
 {
@@ -179,18 +200,15 @@ The plugin exposes the same text-to-image endpoint as upstream, and AstrBot has 
 }
 ```
 
-Restart AstrBot afterwards. `/t2i_status` reports the current endpoint, strategy and output switch state.
+### Requirements
 
-## Requirements
-
-- **AstrBot 4.16 or newer** (below 5.x): the plugin config, event and logging APIs it uses come from that range.
-- **Python 3.11 or newer**.
+- **Python 3.11 or newer** (AstrBot's minimum version is declared in the plugin metadata and enforced at install time).
 - **`playwright` (pinned to 1.64.1)**: installed with the plugin dependencies, nothing to do by hand.
 - **Chromium**: downloaded and managed by the plugin (~200 MB of disk); an existing system browser works too.
 - **Automatic library installation** needs the AstrBot process to run as root with `apt-get` or `dnf` in the container.
 - **Memory**: every concurrent render holds one browser page, so a larger `render.concurrency` costs more memory.
 
-## HTTP API
+### HTTP API
 
 For your own integrations (AstrBot calls these itself, so you rarely touch them):
 
@@ -200,61 +218,58 @@ For your own integrations (AstrBot calls these itself, so you rarely touch them)
 
 The interface matches upstream; the full contract is in the upstream docs at [`docs/standalone/README.md`](docs/standalone/README.md).
 
-## Standalone mode (optional)
+### Standalone mode (optional)
 
-As a plugin, rendering happens inside the AstrBot process — there is no "plugin on the host, AstrBot in a container" combination. This section only matters when you skip the plugin and run a **separate service** instead (to share one service between several AstrBot instances, or to host it on another machine). The upstream capability is intact:
+Only matters when you skip the plugin and run a **separate service** (to share one service between several AstrBot instances, or to host it on another machine):
 
 ```bash
 docker build -t astrbot-t2i-service .
 docker run -d -p 8999:8999 astrbot-t2i-service
 ```
 
-Environment variables, S3/R2 storage and Prometheus metrics behave as upstream — see [`docs/standalone/README.md`](docs/standalone/README.md) and [`docs/standalone/MONITORING.md`](docs/standalone/MONITORING.md).
+Environment variables, S3/R2 storage and Prometheus metrics behave as upstream — see [`docs/standalone/README.md`](docs/standalone/README.md) and [`docs/standalone/MONITORING.md`](docs/standalone/MONITORING.md). When the service lives outside AstrBot, AstrBot's text-to-image API address must be an address AstrBot can actually reach, and the service should have an auth token set — never expose the bare port to the internet.
 
-When the standalone service lives outside AstrBot, AstrBot's text-to-image API address must be an address AstrBot can actually reach (same machine: `http://127.0.0.1:8999/text2img`; another container or host: the host's LAN IP or a domain), and the service should have an auth token set — never expose the bare port to the internet.
-
-## FAQ
+### FAQ
 
 **Chromium download is slow or fails**
-npmmirror is used by default; you can also change **Playwright download host**, or point **Browser install directory** at an existing browser directory. The **Download Chromium** switch turns itself off when the download ends: if it closed while **Chromium ready** is still off, that run failed — check the install state and log tail in `/t2i_status`.
+npmmirror is used by default; you can change **Playwright download host**, or point **Browser install directory** at an existing directory. If the switch closed while **Chromium ready** is still off, that run failed — check `/t2i_status` for the state and the log tail.
 
 **Rendering fails with `error while loading shared libraries: libnspr4.so` or `BrowserType.launch: Target page, context or browser has been closed`**
-The container is missing Chromium's system libraries (the browser itself is downloaded, but `libnspr4`, `libnss3`, `libatk` ... are not). Run `/t2i_install` to install them (AstrBot must run as root with `apt-get`/`dnf` available); when the environment does not allow it, the plugin prints the command to run manually.
+The container is missing Chromium's system libraries. Run `/t2i_install` to install them (needs root with `apt-get`/`dnf`); when the environment does not allow it, the plugin prints the command to run manually.
 
 **Launching the browser fails with `No usable sandbox!`**
-The official AstrBot image runs as root — keep **Launch Chromium with `--no-sandbox`** on.
+The official image runs as root — keep **Launch Chromium with `--no-sandbox`** on.
 
 **Fallback endpoint errors or slow images**
-Until Chromium is ready, requests are proxied to **Fallback endpoint** (the official public endpoint `https://t2i.rcfortress.site/text2img` by default; it runs abroad and answers `render queue wait exceeded` when the queue is long; a retired default left over from an older version is replaced by the current one at startup, addresses you filled in yourself are kept). Once local Chromium is installed the fallback is no longer used; you can also point it at your own service or turn **Proxy to the upstream public endpoint when local rendering fails** off.
+Until Chromium is ready, requests go to the fallback endpoint (the official public endpoint runs abroad and answers `render queue wait exceeded` when the queue is long). Once local Chromium is installed the fallback is no longer used; you can also point it at your own service or turn the proxy off.
 
 **Port already in use**
-Change **Listen port**, then re-enable **Write AstrBot's text-to-image endpoint on startup**, or update AstrBot's `t2i_endpoint` manually.
+Change **Listen port**, then re-enable **Write AstrBot's text-to-image endpoint on startup**, or update `t2i_endpoint` manually.
 
 **Text-to-image broken after an AstrBot restart**
-Check that `t2i_endpoint` still targets the plugin's listen address; `/t2i_status` shows the address the plugin actually uses when the port was changed and not synced.
+Check that `t2i_endpoint` still targets the plugin's listen address; `/t2i_status` shows the address the plugin actually uses.
 
 **A font is installed but the template still uses something else**
-Click **Render preview** under **Overview** on the T2I Service Panel page (click the family names first to compare only those): each row is one font, and if several rows look identical none of those fonts are in effect. The usual causes are a render process that has not restarted yet (the **Restart the browser after font changes** option is off, or press **Reload fonts**) or a file that is really a renamed web page or archive — uploads and downloads both check the font file header. Note also that templates ask for `Noto Sans SC` while a system package provides `Noto Sans CJK SC`; one cannot stand in for the other.
+Click **Render preview** under **Overview**: if several rows look identical, none of those fonts are in effect. The usual causes are a render process that has not restarted yet (**Reload fonts**) or a file that is really a renamed web page or archive (uploads and downloads both check the font header). Note also that `Noto Sans SC` and a system package's `Noto Sans CJK SC` are different names; one cannot stand in for the other.
 
 **I applied a template but the output still looks the same**
-The first apply needs one AstrBot restart (it only reads the template name at startup); after that, switching to another template takes effect on the next message. If nothing changed after the restart, check the status chips at the top of the **T2I templates** tab: when it says the plugin's template is not in use, hit **Apply** again.
+The first apply needs one AstrBot restart; switching afterwards is instant. If nothing changed, check the chips at the top of the **T2I templates** tab — if the plugin's template is not in use, hit **Apply** again.
 
 **Disk usage**
-Chromium takes ~200 MB in the plugin data directory; rendered images are kept 24 hours and cleaned on a timer. Fonts add up per family — a full template set usually costs 20–60 MB.
+Chromium takes ~200 MB; rendered images are kept 24 hours; fonts add up per family — a full template set usually costs 20–60 MB.
 
 **Where are the logs**
-Render and cleanup logs sit together with the plugin's other logs — filter the AstrBot log by the plugin name or the `[t2i]` prefix. Successful renders do not log HTML content. Every generation leaves an access line (`POST /text2img/generate → status`, with duration and request size); a failed render records the reason and the traceback next to it, so you can match the two by timestamp.
+They sit together with the plugin's other logs — filter by the plugin name or the `[t2i]` prefix; a failed render records the reason and the traceback.
 
-## Development
+### Development
 
 ```bash
 pip install -r requirements-standalone.txt pytest pytest-asyncio
 pytest tests/ -q
 ```
 
-- Plugin tests need no real Chromium (the renderer is faked); end-to-end runs with a real browser live in `tools/envlab/`.
-- `requirements.txt` holds the plugin runtime dependency only (`playwright`); standalone mode uses `requirements-standalone.txt`.
+Plugin tests need no real Chromium (the renderer is faked); end-to-end runs with a real browser live in `tools/envlab/`.
 
-## License and credits
+### License and credits
 
 Apache-2.0, same as upstream. The rendering core is ported from [astrbot-t2i-service](https://github.com/AstrBotDevs/astrbot-t2i-service); the upstream `LICENSE` is kept and the porting notes live in [`NOTICE`](NOTICE).
