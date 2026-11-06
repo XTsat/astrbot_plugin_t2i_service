@@ -25,7 +25,7 @@
 |------|------|------|
 | `main.py` | ✅ | Star 插件入口：生命周期、5 个命令、周期清理、端点写入 |
 | `metadata.yaml` | ✅ | 插件元数据（name/version/author/desc/repo/astrbot_version/tags），**唯一版本源** |
-| `_conf_schema.json` | ✅ | WebUI 配置 Schema（`server` / `render` / `browser` / `endpoint` / `storage` / `fonts` / `templates` 七段） |
+| `_conf_schema.json` | ✅ | WebUI 配置 Schema（`server` / `render` / `browser` / `endpoint` / `output` / `storage` / `fonts` / `templates` 八段） |
 | `README.md` + `README_en.md` | ✅ | 用户文档，中文版为权威源 |
 | `CHANGELOG.md` | ✅ | 变更日志 |
 | `LICENSE` + `NOTICE` | ✅ | Apache-2.0；`NOTICE` 记录上游基底与移植说明，**不可删** |
@@ -283,7 +283,7 @@ class T2IServicePlugin(Star):
 - 常用节点字段：`type`（必填，`string`/`text`/`int`/`float`/`bool`/`object`/`list`/`dict`/`template_list`）、`description`（WebUI 显示的配置名）、`hint`（右侧问号里的补充说明）、`default`、`options`/`labels`、`slider`（`{"min","max","step"}`，仅 int/float）、`secret`（密钥类字符串遮罩）、`invisible`、`items`（`object`/`dict` 的子 schema）。
 - schema 里有的项**必须**在 README 配置表里出现（漏写 = 文档不全）。
 
-顶层七段，与服务分层一一对应：
+顶层八段，与服务分层一一对应：
 
 | 段 | 关键项 | 说明 |
 |---|---|---|
@@ -291,6 +291,7 @@ class T2IServicePlugin(Star):
 | `render` | `concurrency`、`no_sandbox`、`idle_timeout_seconds`、`prelaunch`、`default_type`、`default_quality`、`full_page` | 渲染行为 |
 | `browser` | `browsers_path`、`download_host`、`executable_path`、`auto_install_deps`、`cleanup_orphans`、`install_timeout_seconds` | 浏览器供给 |
 | `endpoint` | `auto_configure`、`service_url`、`current_service_url`（展示用，插件回写） | 是否写 AstrBot 主配置 |
+| `output` | `enabled`、`word_threshold`、`core_synced`（回写标记，隐藏） | AstrBot 文转图输出：什么时候把回复转成图片 |
 | `storage` | `image_lifetime_hours`、`cleanup_interval_minutes` | 图片留存与清理 |
 | `fonts` | `enabled`、`github_proxy`、`upload_limit_mb`、`restart_browser_on_change` | 字体供给（下载/上传在插件页面的「文转图服务面板」里做） |
 | `templates` | `refresh_minutes` | 插件自带模板的数据刷新间隔 |
@@ -300,12 +301,13 @@ class T2IServicePlugin(Star):
 
 ### 5.2 配置读取模式
 
-- **唯一入口**是 `T2IConfig.from_raw(dict(self._raw_config))`，产出嵌套 dataclass（`ServerConfig` / `RenderConfig` / `BrowserConfig` / `EndpointConfig` / `StorageConfig` / `FontsConfig`）。业务代码读 `self.settings.render.concurrency`，**不要**到处 `self.config.get(...)`。
+- **唯一入口**是 `T2IConfig.from_raw(dict(self._raw_config))`，产出嵌套 dataclass（`ServerConfig` / `RenderConfig` / `BrowserConfig` / `EndpointConfig` / `OutputConfig` / `StorageConfig` / `FontsConfig` / `TemplatesConfig`）。业务代码读 `self.settings.render.concurrency`，**不要**到处 `self.config.get(...)`。
 - `_conf_schema.json` 是默认值的对外契约，`T2IConfig` 的默认值必须与它一致——`tests/test_plugin_config.py` 会守住这条。
 - 插件配置只读：`main.py` 把 AstrBot 下发的配置字典交给 `T2IConfig.from_raw`，自身不再散读；插件不写回自己的配置（`_conf_schema.json` 的默认值即最终默认值）。
 - **例外之一（`browser.download_chromium` / `browser.chromium_ready`）**：AstrBot 配置页只有开关 + 保存、没有按钮控件，所以「一键下载 Chromium」做成一次性开关——`main.py` 的 `_update_plugin_config` 把它收回，并回写浏览器就绪状态供配置页显示是否已就绪（开关本身常显，不用 `condition` 隐藏）。
 - **例外之二（`endpoint.current_service_url`）**：配置页没有只读文本控件，用户看不到插件实际会写入哪个地址，所以启动时由 `_sync_service_url_field()` 把算好的地址回写到该字段；它只用于展示，不参与 `resolve_service_url()` 解析，用户手改的值下次启动会被覆盖。
-- 除以上三项外不要再新增回写。
+- **例外之三（`output.core_synced`）**：`output.enabled` / `output.word_threshold` 首次启动要沿用 AstrBot 现有设置（避免升级时用插件默认值覆盖），所以由 `_sync_t2i_output()` 在首次运行时把取到的值回写进插件配置并打上隐藏标记；之后以插件配置为准写回 AstrBot 主配置。
+- 除以上四项外不要再新增回写。
 
 ### 5.3 数据文件
 

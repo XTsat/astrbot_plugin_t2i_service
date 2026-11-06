@@ -17,7 +17,10 @@ DEFAULT_FALLBACK_ENDPOINT = "https://t2i.rcfortress.site/text2img"
 DEFAULT_DOWNLOAD_HOST = "https://cdn.npmmirror.com/binaries/playwright"
 DEFAULT_PORT = 8999
 
-
+# AstrBot 自己的默认值（t2i_word_threshold=150，且运行时会把阈值夹到 ≥50），
+# 插件这边保持一致，避免同一份设置在两处显示不同数字。
+DEFAULT_WORD_THRESHOLD = 150
+MIN_WORD_THRESHOLD = 50
 def _as_bool(value: Any, default: bool) -> bool:
     if isinstance(value, bool):
         return value
@@ -43,6 +46,14 @@ def _as_str(value: Any, default: str = "") -> str:
     if value is None:
         return default
     return str(value).strip()
+
+
+def coerce_word_threshold(value: Any) -> int:
+    """归一化转图字数阈值：与 AstrBot 一致，最小 50，非法值回落默认值。"""
+    try:
+        return max(MIN_WORD_THRESHOLD, int(str(value).strip()))
+    except (TypeError, ValueError):
+        return DEFAULT_WORD_THRESHOLD
 
 
 def _section(raw: dict[str, Any], key: str) -> dict[str, Any]:
@@ -102,12 +113,21 @@ class EndpointConfig:
     """把 AstrBot 主程序的文转图请求指向本插件。"""
 
     auto_configure: bool = False
-    # 自动写入执行时是否顺带打开 AstrBot 的「文本转图像输出」总开关（t2i）
-    enable_t2i_output: bool = True
     service_url: str = ""
     # 由插件按 host/port 回写，仅在配置页展示「该填进 AstrBot 的地址」，
     # 不参与 resolve_service_url 解析——手改的值会被下次启动覆盖
     current_service_url: str = ""
+
+
+@dataclass
+class OutputConfig:
+    """AstrBot 文转图输出：什么时候把回复转成图片。"""
+
+    # 对应 AstrBot 主配置的 t2i / t2i_word_threshold，插件启动时写进去
+    enabled: bool = False
+    word_threshold: int = DEFAULT_WORD_THRESHOLD
+    # 回写标记：首次启动先沿用 AstrBot 现有设置，避免升级时被插件默认值覆盖
+    core_synced: bool = False
 
 
 @dataclass
@@ -140,6 +160,7 @@ class T2IConfig:
     render: RenderConfig = field(default_factory=RenderConfig)
     browser: BrowserConfig = field(default_factory=BrowserConfig)
     endpoint: EndpointConfig = field(default_factory=EndpointConfig)
+    output: OutputConfig = field(default_factory=OutputConfig)
     storage: StorageConfig = field(default_factory=StorageConfig)
     fonts: FontsConfig = field(default_factory=FontsConfig)
     templates: TemplatesConfig = field(default_factory=TemplatesConfig)
@@ -152,6 +173,7 @@ class T2IConfig:
         render_raw = _section(raw, "render")
         browser_raw = _section(raw, "browser")
         endpoint_raw = _section(raw, "endpoint")
+        output_raw = _section(raw, "output")
         storage_raw = _section(raw, "storage")
         fonts_raw = _section(raw, "fonts")
         templates_raw = _section(raw, "templates")
@@ -196,9 +218,17 @@ class T2IConfig:
 
         endpoint = EndpointConfig(
             auto_configure=_as_bool(endpoint_raw.get("auto_configure"), False),
-            enable_t2i_output=_as_bool(endpoint_raw.get("enable_t2i_output"), True),
             service_url=_as_str(endpoint_raw.get("service_url")),
             current_service_url=_as_str(endpoint_raw.get("current_service_url")),
+        )
+
+        output = OutputConfig(
+            enabled=_as_bool(output_raw.get("enabled"), False),
+            # 与 AstrBot 一致：阈值最小 50，非数字回落到默认值
+            word_threshold=coerce_word_threshold(
+                output_raw.get("word_threshold", DEFAULT_WORD_THRESHOLD)
+            ),
+            core_synced=_as_bool(output_raw.get("core_synced"), False),
         )
 
         storage = StorageConfig(
@@ -236,6 +266,7 @@ class T2IConfig:
             render=render,
             browser=browser,
             endpoint=endpoint,
+            output=output,
             storage=storage,
             fonts=fonts,
             templates=templates,

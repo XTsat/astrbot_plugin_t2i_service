@@ -71,7 +71,11 @@ from t2i_plugin.card import (  # noqa: E402
     build_font_specimen,
     build_test_card,
 )
-from t2i_plugin.config import DEFAULT_FALLBACK_ENDPOINT, T2IConfig  # noqa: E402
+from t2i_plugin.config import (  # noqa: E402
+    DEFAULT_FALLBACK_ENDPOINT,
+    T2IConfig,
+    coerce_word_threshold,
+)
 from t2i_plugin.font_web import FontWebApi  # noqa: E402
 from t2i_plugin.fonts import (  # noqa: E402
     FONT_FAMILIES,
@@ -216,6 +220,11 @@ class T2IServicePlugin(Star):
         self._apply_fonts_config()
 
         self._schedule_deps_install()
+
+        # 先把「渲染时机」写进 AstrBot 主配置：AstrBot 的 t2i 总开关在每条消息处理
+        # 时现读，写完即生效；字数阈值被 AstrBot 在启动时缓存，阈值改动要等下次
+        # 重启 AstrBot 才按新值生效（配置页的提示里已写明）。
+        await self._sync_t2i_output()
 
         if self.settings.server.enabled:
             ok, message = await self.server.start()
@@ -440,27 +449,69 @@ class T2IServicePlugin(Star):
             return
         try:
             endpoint = await self._write_endpoint_to_core_config()
-            if self.settings.endpoint.enable_t2i_output:
-                logger.info(f"[t2i] 已把 AstrBot 文转图端点设置为 {endpoint}，并打开文本转图像输出")
-            else:
-                logger.info(f"[t2i] 已把 AstrBot 文转图端点设置为 {endpoint}")
+            logger.info(f"[t2i] 已把 AstrBot 文转图端点设置为 {endpoint}")
         except Exception as exc:
             logger.warning(
                 f"[t2i] 写入 AstrBot 文转图端点失败（可在 WebUI 手动设置）：{exc}"
             )
 
     async def _write_endpoint_to_core_config(self) -> str:
-        """把端点写进 AstrBot 主配置并按配置打开总开关，返回写入的地址。"""
+        """把端点写进 AstrBot 主配置，返回写入的地址。"""
         endpoint = self.settings.resolve_service_url()
         core_config = self.context.get_config()
         core_config["t2i_endpoint"] = endpoint
         core_config["t2i_strategy"] = "remote"
-        # AstrBot 的「文本转图像输出」总开关关着时，t2i_endpoint 在它的配置页是隐藏项、
-        # 也不会被读取，只写地址等于没写；是否连开关一起打开由单独的配置控制
-        if self.settings.endpoint.enable_t2i_output:
-            core_config["t2i"] = True
         await _save_config(core_config)
         return endpoint
+
+    async def _sync_t2i_output(self) -> None:
+        """把配置页的「AstrBot 文转图输出」写进 AstrBot 主配置。
+
+        首次运行先沿用 AstrBot 现有设置并打上标记：升级上来的用户本来就有自己的
+        开关与阈值，直接用插件默认值覆盖会让文转图突然失效或突然开始出图。
+        """
+        try:
+            core_config = self.context.get_config()
+        except Exception as exc:  # pragma: no cover - 防御
+            logger.warning(f"[t2i] 读取 AstrBot 配置失败，跳过文转图输出设置：{exc}")
+            return
+        output = self.settings.output
+        if not output.core_synced:
+            output.enabled = bool(core_config.get("t2i", False))
+            output.word_threshold = coerce_word_threshold(
+                core_config.get("t2i_word_threshold")
+            )
+            await self._update_plugin_config(
+                {
+                    "output": {
+                        "enabled": output.enabled,
+                        "word_threshold": output.word_threshold,
+                        "core_synced": True,
+                    }
+                }
+            )
+            logger.info(
+                "[t2i] 首次读取文转图输出设置，已沿用 AstrBot 现有开关"
+                f"（{'开' if output.enabled else '关'}）与阈值（{output.word_threshold} 字）"
+            )
+            return
+        changed: list[str] = []
+        if bool(core_config.get("t2i", False)) != output.enabled:
+            core_config["t2i"] = output.enabled
+            changed.append("t2i")
+        if coerce_word_threshold(
+            core_config.get("t2i_word_threshold")
+        ) != output.word_threshold:
+            core_config["t2i_word_threshold"] = output.word_threshold
+            changed.append("t2i_word_threshold")
+        if not changed:
+            return
+        try:
+            await _save_config(core_config)
+        except Exception as exc:
+            logger.warning(f"[t2i] 写入 AstrBot 文转图输出设置失败：{exc}")
+            return
+        logger.info(f"[t2i] 已按配置页更新 AstrBot 文转图输出：{', '.join(changed)}")
 
     async def _periodic_maintenance(self) -> None:
         """周期性清理过期图片 + 释放闲置 Chromium。"""
@@ -672,11 +723,17 @@ class T2IServicePlugin(Star):
             },
             "endpoint": {
                 "auto_configure": self.settings.endpoint.auto_configure,
-                "enable_t2i_output": self.settings.endpoint.enable_t2i_output,
                 "target": self.settings.resolve_service_url(),
                 "astrbot_t2i_endpoint": self._read_core_config("t2i_endpoint"),
                 "astrbot_t2i_strategy": self._read_core_config("t2i_strategy"),
                 "astrbot_t2i_enabled": self._read_core_flag("t2i"),
+            },
+            "output": {
+                "enabled": self.settings.output.enabled,
+                "word_threshold": self.settings.output.word_threshold,
+                # AstrBot 主配置里的实际值：阈值改完要重启 AstrBot 才会被流水线读走
+                "astrbot_t2i_enabled": self._read_core_flag("t2i"),
+                "astrbot_word_threshold": self._read_core_config("t2i_word_threshold"),
             },
             "fonts": {
                 "enabled": self.settings.fonts.enabled,
@@ -711,6 +768,7 @@ class T2IServicePlugin(Star):
         browser = payload["browser"]
         renderer = payload["renderer"]
         endpoint = payload["endpoint"]
+        output = payload["output"]
         fonts = payload["fonts"]
 
         if browser["installed"]:
@@ -739,7 +797,8 @@ class T2IServicePlugin(Star):
             f"（{fonts['total_text']}，{'已接管' if fonts['env_active'] else '未生效'}）",
             f"AstrBot 文转图端点：{endpoint['astrbot_t2i_endpoint'] or '（未设置）'}"
             f"（策略：{endpoint['astrbot_t2i_strategy'] or '未知'}，"
-            f"输出开关：{'开' if endpoint['astrbot_t2i_enabled'] else '关'}）",
+            f"输出开关：{'开' if endpoint['astrbot_t2i_enabled'] else '关'}，"
+            f"字数阈值：{output['astrbot_word_threshold'] or output['word_threshold']} 字）",
         ]
         if browser["deps"]["status"] != "idle":
             lines.append(

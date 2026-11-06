@@ -111,20 +111,45 @@
       "auto_configure": {
         "description": "启动时自动写入 AstrBot 文转图端点",
         "type": "bool",
-        "hint": "打开后插件会在启动时把 AstrBot 主配置的文转图端点写成上面展示的地址（默认 http://127.0.0.1:8999/text2img）、并将 t2i_strategy 设为 remote（300 秒空闲探测策略）；要不要连「文本转图像输出」总开关（t2i）一起打开，由下面单独的开关控制。重启 AstrBot 生效。",
+        "hint": "打开后插件会在启动时把 AstrBot 主配置的文转图端点写成上面展示的地址（默认 http://127.0.0.1:8999/text2img）、并将 t2i_strategy 设为 remote（300 秒空闲探测策略）。重启 AstrBot 生效。「文本转图像输出」总开关与转图字数阈值在下面的「AstrBot 文转图输出」段里改。",
         "default": false
-      },
-      "enable_t2i_output": {
-        "description": "自动写入时同时打开「文本转图像输出」总开关",
-        "type": "bool",
-        "hint": "仅在自动写入执行时生效：AstrBot 的「文本转图像输出」总开关（t2i）关着时文转图不会工作，打开本项后自动写入会一并打开它；只想改端点地址、不想动总开关的话就关掉本项。",
-        "default": true
       },
       "service_url": {
         "description": "写入的端点地址（留空=按监听地址自动生成）",
         "type": "string",
         "hint": "仅在 AstrBot 通过别的主机名/端口访问本插件时才需要填写，需包含 /text2img；留空时自动生成，默认 http://127.0.0.1:8999/text2img（改端口后随之变化，具体值见上面的「本插件当前地址」）。",
         "default": ""
+      }
+    }
+  },
+  "output": {
+    "description": "AstrBot 文转图输出",
+    "type": "object",
+    "hint": "决定 AstrBot 什么时候把回复转成图片：总开关与转图字数阈值。保存后插件会热重载，总开关立即生效，字数阈值要等重启 AstrBot 才生效。",
+    "items": {
+      "enabled": {
+        "description": "文本转图像输出（总开关）",
+        "type": "bool",
+        "hint": "对应 AstrBot 主配置的 t2i：打开后较长的回复会渲染成图片再发送，关闭则一律发文字（保存即生效）。插件启动时会把这里与下面的阈值写进 AstrBot 主配置；首次安装或升级会沿用 AstrBot 现有设置，不会用默认值覆盖。",
+        "default": false
+      },
+      "word_threshold": {
+        "description": "转图字数阈值（超过才转图）",
+        "type": "int",
+        "slider": {
+          "min": 50,
+          "max": 2000,
+          "step": 10
+        },
+        "hint": "对应 AstrBot 主配置的 t2i_word_threshold：回复文字超过该字数才转成图片，不到阈值直接发文字，AstrBot 最小按 50 处理。AstrBot 在启动时缓存这个阈值，所以改完要重启一次 AstrBot 才对后续消息生效；总开关与补发方式保存即生效。",
+        "default": 150
+      },
+      "core_synced": {
+        "description": "已从 AstrBot 主配置取过初始设置（插件自动维护）",
+        "type": "bool",
+        "hint": "插件内部标记：第一次启动时先沿用 AstrBot 现有设置，避免升级时用插件默认值覆盖。无需手动修改。",
+        "invisible": true,
+        "default": false
       }
     }
   },

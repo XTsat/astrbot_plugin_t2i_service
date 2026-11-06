@@ -191,6 +191,8 @@ async def test_status_text_is_human_readable(plugin):
     text = instance._status_text()
     assert "文转图" in text or "t2i" in text.lower()
     assert str(port) in text
+    # 新配置段的当前值也要在状态里看得到
+    assert "字数阈值：150 字" in text
 
 
 # ------------------------------------------------ 配置页「下载 Chromium」开关
@@ -391,8 +393,8 @@ async def test_service_url_field_is_written_back_for_display(plugin):
     assert raw.saves == 1
 
 
-async def test_apply_endpoint_config_turns_on_t2i_output_switch(plugin):
-    """自动写入端点时一并打开 AstrBot 的「文本转图像输出」总开关。"""
+async def test_apply_endpoint_config_writes_endpoint_only(plugin):
+    """自动写入只改端点与策略：总开关与字数阈值由「AstrBot 文转图输出」统一管理。"""
     core = RecordingConfig({"t2i": False, "t2i_endpoint": "", "t2i_strategy": "local"})
     port = free_port()
     raw = {
@@ -405,32 +407,73 @@ async def test_apply_endpoint_config_turns_on_t2i_output_switch(plugin):
 
     await instance._apply_endpoint_config()
 
-    assert core["t2i"] is True
     assert core["t2i_strategy"] == "remote"
     assert core["t2i_endpoint"] == f"http://127.0.0.1:{port}/text2img"
+    assert core["t2i"] is False
     assert core.saves == 1
-    assert instance._status_payload()["endpoint"]["astrbot_t2i_enabled"] is True
+    assert instance._status_payload()["endpoint"]["astrbot_t2i_strategy"] == "remote"
 
 
-async def test_apply_endpoint_config_leaves_t2i_switch_when_disabled(plugin):
-    """总开关拆分开关关着时，只写端点与策略，不碰「文本转图像输出」总开关。"""
-    core = RecordingConfig({"t2i": False, "t2i_endpoint": "", "t2i_strategy": "local"})
-    port = free_port()
-    raw = {
-        "server": {"enabled": False, "host": "127.0.0.1", "port": port},
-        "render": {"prelaunch": False},
-        "endpoint": {"auto_configure": True, "enable_t2i_output": False},
-        "browser": {"cleanup_orphans": False},
-    }
+# -------------------------------------- 配置页「AstrBot 文转图输出」
+
+
+async def test_sync_t2i_output_adopts_astrbot_values_on_first_run(plugin):
+    """首次启用先沿用 AstrBot 现有设置，不能用插件默认值覆盖用户的开关。"""
+    core = RecordingConfig({"t2i": True, "t2i_word_threshold": 300})
+    raw = RecordingConfig(
+        {
+            "server": {"enabled": False, "port": free_port()},
+            "output": {"enabled": False, "word_threshold": 150},
+        }
+    )
     instance = plugin_main.T2IServicePlugin(FakeContext(core), raw)
 
-    await instance._apply_endpoint_config()
+    await instance._sync_t2i_output()
+
+    assert instance.settings.output.enabled is True
+    assert instance.settings.output.word_threshold == 300
+    assert raw["output"]["enabled"] is True
+    assert raw["output"]["word_threshold"] == 300
+    assert raw["output"]["core_synced"] is True
+    assert raw.saves == 1
+    # 首次只做「沿用」，不拿插件默认值反写 AstrBot
+    assert core == {"t2i": True, "t2i_word_threshold": 300}
+    assert core.saves == 0
+
+
+async def test_sync_t2i_output_writes_plugin_values_to_core(plugin):
+    """打过标记之后以插件配置为准：保存配置并重载插件即写进 AstrBot。"""
+    core = RecordingConfig({"t2i": True, "t2i_word_threshold": 300})
+    raw = RecordingConfig(
+        {
+            "server": {"enabled": False, "port": free_port()},
+            "output": {"enabled": False, "word_threshold": 120, "core_synced": True},
+        }
+    )
+    instance = plugin_main.T2IServicePlugin(FakeContext(core), raw)
+
+    await instance._sync_t2i_output()
 
     assert core["t2i"] is False
-    assert core["t2i_strategy"] == "remote"
-    assert core["t2i_endpoint"] == f"http://127.0.0.1:{port}/text2img"
+    assert core["t2i_word_threshold"] == 120
     assert core.saves == 1
-    assert instance._status_payload()["endpoint"]["enable_t2i_output"] is False
+    assert instance._status_payload()["output"]["word_threshold"] == 120
+
+
+async def test_sync_t2i_output_is_noop_when_values_match(plugin):
+    core = RecordingConfig({"t2i": True, "t2i_word_threshold": 120})
+    raw = RecordingConfig(
+        {
+            "server": {"enabled": False, "port": free_port()},
+            "output": {"enabled": True, "word_threshold": 120, "core_synced": True},
+        }
+    )
+    instance = plugin_main.T2IServicePlugin(FakeContext(core), raw)
+
+    await instance._sync_t2i_output()
+
+    assert core.saves == 0
+    assert raw.saves == 0
 
 
 async def test_apply_endpoint_config_is_noop_when_switch_off(plugin):

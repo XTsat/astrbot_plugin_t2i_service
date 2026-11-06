@@ -14,7 +14,8 @@ Renders HTML / Jinja2 templates into images inside the AstrBot process and serve
 - **Missing libraries installed for you**: when the browser is installed but cannot launch (missing `libnspr4` and friends), the plugin installs them; if the environment does not allow it, you get the exact command to run.
 - **Fonts bundled with the plugin**: no system-wide font installation — download the preset families, paste a link, or upload your own file from the plugin page.
 - **Templates in one click**: the **T2I templates** tab shows a real render, the source and the size of every template; hit **Apply** and AstrBot's text-to-image template switches to it.
-- **No endpoint to copy by hand**: optionally the plugin writes its own address into AstrBot's text-to-image config, together with the output switch.
+- **No endpoint to copy by hand**: optionally the plugin writes its own address into AstrBot's text-to-image config for you.
+- **Rendering timing under your control**: the text-to-image output switch and the word threshold are edited right on the plugin config page, no diving into AstrBot's core config.
 - **Rendering stays available**: while local rendering is unavailable, requests are proxied to the fallback endpoint so text-to-image keeps working in chat.
 - **Status at a glance**: `/t2i_status` reports the service, the browser, system libraries, the endpoint and render stats; `/t2i_test` renders a card on the spot.
 - **Same interface as upstream**: AstrBot and any compatible client need no code changes.
@@ -60,7 +61,7 @@ The **T2I templates** tab turns AstrBot's text-to-image templates into cards: ea
 
 | Command | Permission | Description |
 | --- | --- | --- |
-| `/t2i_status` | everyone | Service address, browser and system library state, render stats, plus AstrBot's current endpoint and output switch |
+| `/t2i_status` | everyone | Service address, browser and system library state, render stats, plus AstrBot's current endpoint, output switch and word threshold |
 | `/t2i_install` | administrators | Download and install Chromium; installs missing system libraries instead when needed |
 | `/t2i_test` | everyone | Render a self-check card and send it back to verify the whole chain |
 | `/t2i_restart` | administrators | Restart the embedded render service and release Chromium |
@@ -70,7 +71,7 @@ For a first run entirely in chat, go `/t2i_status` → `/t2i_install` → `/t2i_
 
 ## Configuration
 
-The plugin config page shows the seven groups below; each group lists its common options and folds the rest. The **Default** column is what takes effect right after installation.
+The plugin config page shows the eight groups below; each group lists its common options and folds the rest. The **Default** column is what takes effect right after installation.
 
 ### Install Chromium (`browser`)
 
@@ -120,8 +121,18 @@ Every option here is needed on the wiring path, so they are all listed directly.
 | --- | --- | --- | --- |
 | Current plugin address (`current_service_url`) | text | empty | Filled in for copying; manual edits are overwritten |
 | Write AstrBot's text-to-image endpoint on startup (`auto_configure`) | switch | off | Writes the endpoint and sets the strategy to `remote` |
-| Also turn on the text-to-image output switch (`enable_t2i_output`) | switch | on | Turns the output switch on too, without which nothing renders |
 | Endpoint address to write (`service_url`) | text | empty | Only needed when AstrBot reaches the plugin via another host/port |
+
+### AstrBot text-to-image output (`output`)
+
+Decide right on the plugin config page when AstrBot renders a reply into an image; saving writes the values into AstrBot's core config, so there is no need to touch AstrBot's own settings page.
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| Text-to-image output (`enabled`) | switch | off | Maps to AstrBot's `t2i`; longer replies become images. Takes effect as soon as you save |
+| Word threshold (`word_threshold`) | number | `150` | Maps to `t2i_word_threshold`; only replies longer than this become images, minimum 50. Restart AstrBot for a new threshold to take effect |
+
+> On first install or upgrade the switch and threshold are adopted from AstrBot's current settings; after that the plugin config wins. There is also a plugin-maintained hidden flag (`core_synced`) that needs no manual changes.
 
 ### Rendering (`render`)
 
@@ -189,7 +200,7 @@ Downloading, uploading and removing font files all happen on the **T2I Service P
 The plugin exposes the same text-to-image endpoint as upstream, and AstrBot has to know its address:
 
 - **Find the address**: **Current plugin address** under **Wire into AstrBot** is exactly what belongs in AstrBot's text-to-image API address (default `http://127.0.0.1:8999/text2img`, updated automatically when you change the listen address or port).
-- **Automatic**: turn on **Write AstrBot's text-to-image endpoint on startup**; the plugin writes that address and switches to the remote strategy. AstrBot's output switch is controlled by **Also turn on the text-to-image output switch** (on by default).
+- **Automatic**: turn on **Write AstrBot's text-to-image endpoint on startup**; the plugin writes that address and switches to the remote strategy. The output switch and word threshold live under **AstrBot text-to-image output** (see the configuration above).
 - **Manual**: make sure AstrBot's config has the three values below, then restart:
 
 ```jsonc
@@ -248,6 +259,9 @@ Change **Listen port**, then re-enable **Write AstrBot's text-to-image endpoint 
 
 **Text-to-image broken after an AstrBot restart**
 Check that `t2i_endpoint` still targets the plugin's listen address; `/t2i_status` shows the address the plugin actually uses.
+
+**Why did my new word threshold not take effect?**
+AstrBot caches the threshold at startup. Restart AstrBot once after saving the plugin config before subsequent messages use the new value; the output switch and the follow-up mode apply as soon as you save.
 
 **A font is installed but the template still uses something else**
 Click **Render preview** under **Overview**: if several rows look identical, none of those fonts are in effect. The usual causes are a render process that has not restarted yet (**Reload fonts**) or a file that is really a renamed web page or archive (uploads and downloads both check the font header). Note also that `Noto Sans SC` and a system package's `Noto Sans CJK SC` are different names; one cannot stand in for the other.

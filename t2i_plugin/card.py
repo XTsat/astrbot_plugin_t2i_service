@@ -10,6 +10,7 @@ import html as _html
 import time
 from pathlib import Path
 
+
 _BASE_STYLE = """
   * { box-sizing: border-box; }
   body {
@@ -150,6 +151,7 @@ def build_status_card(payload: dict) -> str:
     browser = payload.get("browser", {}) or {}
     renderer = payload.get("renderer", {}) or {}
     endpoint = payload.get("endpoint", {}) or {}
+    output = payload.get("output", {}) or {}
     install = browser.get("install", {}) or {}
 
     deps = browser.get("deps", {}) or {}
@@ -226,7 +228,8 @@ def build_status_card(payload: dict) -> str:
             "AstrBot 端点",
             f'<span class="mono">{_esc(endpoint.get("astrbot_t2i_endpoint") or "（未设置）")}</span>'
             f' 策略：{_esc(endpoint.get("astrbot_t2i_strategy") or "未知")}'
-            f' 输出开关：{_esc("开" if endpoint.get("astrbot_t2i_enabled") else "关")}',
+            f' 输出开关：{_esc("开" if endpoint.get("astrbot_t2i_enabled") else "关")}'
+            f' 阈值：{_esc(output.get("astrbot_word_threshold") or output.get("word_threshold") or 150)} 字',
         ),
         row("浏览器目录", _esc(browser.get("browsers_path", "")), mono=True),
         row("插件运行时长", f"{uptime / 60:.1f} 分钟"),

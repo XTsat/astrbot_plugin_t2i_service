@@ -73,3 +73,36 @@ def test_resolve_service_url_prefers_explicit_override_and_normalizes_wildcard()
 
     config.endpoint.service_url = "http://plugin.local:1234/text2img"
     assert config.resolve_service_url() == "http://plugin.local:1234/text2img"
+
+
+def test_output_defaults_follow_astrbot():
+    config = T2IConfig.from_raw({})
+    assert config.output.enabled is False
+    assert config.output.word_threshold == 150
+    assert config.output.core_synced is False
+
+
+def test_output_values_are_normalized():
+    config = T2IConfig.from_raw(
+        {
+            "output": {
+                "enabled": "true",
+                "word_threshold": "20",
+                "core_synced": "yes",
+            }
+        }
+    )
+    assert config.output.enabled is True
+    assert config.output.word_threshold == 50  # AstrBot 的最小值
+    assert config.output.core_synced is True
+
+
+def test_output_threshold_falls_back_on_garbage():
+    config = T2IConfig.from_raw({"output": {"word_threshold": "abc"}})
+    assert config.output.word_threshold == 150
+
+
+def test_removed_endpoint_enable_t2i_output_is_ignored():
+    # 总开关改由 output.enabled 统一管理，旧字段不再参与解析
+    config = T2IConfig.from_raw({"endpoint": {"enable_t2i_output": True}})
+    assert not hasattr(config.endpoint, "enable_t2i_output")
