@@ -79,6 +79,7 @@ def test_output_defaults_follow_astrbot():
     config = T2IConfig.from_raw({})
     assert config.output.enabled is False
     assert config.output.word_threshold == 150
+    assert config.output.copy_extra == "merged"
     assert config.output.core_synced is False
 
 
@@ -88,13 +89,44 @@ def test_output_values_are_normalized():
             "output": {
                 "enabled": "true",
                 "word_threshold": "20",
+                "copy_extra": "separate",
                 "core_synced": "yes",
             }
         }
     )
     assert config.output.enabled is True
     assert config.output.word_threshold == 50  # AstrBot 的最小值
+    assert config.output.copy_extra == "separate"
     assert config.output.core_synced is True
+
+
+def test_copy_extra_modes_are_accepted():
+    # merged = QQ 合并转发；single = 一条普通文本；separate = 每项单独一条
+    for mode in ("merged", "single", "separate", "off"):
+        config = T2IConfig.from_raw({"output": {"copy_extra": mode}})
+        assert config.output.copy_extra == mode
+
+
+def test_unknown_copy_extra_mode_falls_back_to_merged():
+    config = T2IConfig.from_raw({"output": {"copy_extra": "bogus"}})
+    assert config.output.copy_extra == "merged"
+
+
+def test_copy_kinds_default_to_everything():
+    config = T2IConfig.from_raw({})
+    assert config.output.copy_kinds == ("links", "code", "config", "paths")
+
+
+def test_copy_kinds_are_filtered_and_put_in_fixed_order():
+    config = T2IConfig.from_raw(
+        {"output": {"copy_kinds": ["paths", "links", "bogus", "links"]}}
+    )
+    assert config.output.copy_kinds == ("links", "paths")
+
+
+def test_empty_copy_kinds_means_nothing_to_send():
+    config = T2IConfig.from_raw({"output": {"copy_kinds": []}})
+    assert config.output.copy_kinds == ()
 
 
 def test_output_threshold_falls_back_on_garbage():

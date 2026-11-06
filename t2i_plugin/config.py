@@ -8,6 +8,7 @@ AstrBot 的插件配置来自 `_conf_schema.json` 生成的那份 `config`，其
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -21,6 +22,25 @@ DEFAULT_PORT = 8999
 # 插件这边保持一致，避免同一份设置在两处显示不同数字。
 DEFAULT_WORD_THRESHOLD = 150
 MIN_WORD_THRESHOLD = 50
+COPY_EXTRA_MODES = ("merged", "single", "separate", "off")
+DEFAULT_COPY_EXTRA = "merged"
+# 状态文本与状态卡片共用同一份显示名，避免两处文案漂移
+COPY_EXTRA_LABELS = {
+    "merged": "合并转发",
+    "single": "不合并（一条文本）",
+    "separate": "拆分（每项一条）",
+    "off": "关闭",
+}
+# 可以单独勾选的「值得复制」内容类型；勾选顺序即展示顺序
+COPY_KINDS = ("links", "code", "config", "paths")
+COPY_KIND_LABELS = {
+    "links": "链接",
+    "code": "代码块",
+    "config": "配置行",
+    "paths": "文件路径",
+}
+
+
 def _as_bool(value: Any, default: bool) -> bool:
     if isinstance(value, bool):
         return value
@@ -46,6 +66,24 @@ def _as_str(value: Any, default: str = "") -> str:
     if value is None:
         return default
     return str(value).strip()
+
+
+def format_copy_kinds_note(kinds: Sequence[str]) -> str:
+    """把勾选的内容类型渲染成状态后缀；全选返回空串，全不选说明不会补发。"""
+    picked = [kind for kind in COPY_KINDS if kind in set(kinds)]
+    if len(picked) == len(COPY_KINDS):
+        return ""
+    if not picked:
+        return "（未勾选任何内容，不会补发）"
+    return "（仅 " + "、".join(COPY_KIND_LABELS[kind] for kind in picked) + "）"
+
+
+def coerce_copy_kinds(value: Any) -> tuple[str, ...]:
+    """归一化「识别哪些内容」：缺省=全选，未知项丢弃，保持固定顺序。"""
+    if not isinstance(value, (list, tuple)):
+        return COPY_KINDS
+    picked = {str(item).strip() for item in value}
+    return tuple(kind for kind in COPY_KINDS if kind in picked)
 
 
 def coerce_word_threshold(value: Any) -> int:
@@ -121,11 +159,15 @@ class EndpointConfig:
 
 @dataclass
 class OutputConfig:
-    """AstrBot 文转图输出：什么时候把回复转成图片。"""
+    """AstrBot 文转图输出：什么时候把回复转成图片，图片里的可复制内容怎么补发。"""
 
     # 对应 AstrBot 主配置的 t2i / t2i_word_threshold，插件启动时写进去
     enabled: bool = False
     word_threshold: int = DEFAULT_WORD_THRESHOLD
+    # 图片里值得复制的片段（链接、代码块、配置行、路径）的补发方式
+    copy_extra: str = DEFAULT_COPY_EXTRA
+    # 勾选哪些片段需要被识别出来补发；全不勾等于不补发
+    copy_kinds: tuple[str, ...] = COPY_KINDS
     # 回写标记：首次启动先沿用 AstrBot 现有设置，避免升级时被插件默认值覆盖
     core_synced: bool = False
 
@@ -222,12 +264,17 @@ class T2IConfig:
             current_service_url=_as_str(endpoint_raw.get("current_service_url")),
         )
 
+        copy_extra = _as_str(output_raw.get("copy_extra"), DEFAULT_COPY_EXTRA)
+        if copy_extra not in COPY_EXTRA_MODES:
+            copy_extra = DEFAULT_COPY_EXTRA
         output = OutputConfig(
             enabled=_as_bool(output_raw.get("enabled"), False),
             # 与 AstrBot 一致：阈值最小 50，非数字回落到默认值
             word_threshold=coerce_word_threshold(
                 output_raw.get("word_threshold", DEFAULT_WORD_THRESHOLD)
             ),
+            copy_extra=copy_extra,
+            copy_kinds=coerce_copy_kinds(output_raw.get("copy_kinds")),
             core_synced=_as_bool(output_raw.get("core_synced"), False),
         )
 

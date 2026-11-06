@@ -20,7 +20,10 @@ import aiohttp
 import pytest
 
 import main as plugin_main
+from astrbot.api.event import MessageEventResult
+from astrbot.api.message_components import Image, Node, Plain
 from t2i_plugin.browser import DONE, FAILED, RUNNING, InstallState
+from t2i_plugin.copy_extra import COPY_EXTRA_KEY
 from t2i_plugin.card import build_status_card, build_test_card
 from t2i_plugin import templates as templates_module
 from t2i_plugin.config import DEFAULT_FALLBACK_ENDPOINT
@@ -193,6 +196,7 @@ async def test_status_text_is_human_readable(plugin):
     assert str(port) in text
     # 新配置段的当前值也要在状态里看得到
     assert "字数阈值：150 字" in text
+    assert "可复制内容补发：合并转发" in text
 
 
 # ------------------------------------------------ 配置页「下载 Chromium」开关
@@ -476,6 +480,169 @@ async def test_sync_t2i_output_is_noop_when_values_match(plugin):
     assert raw.saves == 0
 
 
+# ------------------------------------------ 图片里的可复制内容补发
+
+
+class FakeHookEvent:
+    """on_decorating_result / after_message_sent 需要的最小 event 接口。"""
+
+    def __init__(
+        self,
+        result: MessageEventResult,
+        *,
+        platform_name: str = "aiocqhttp",
+        self_id: str = "123456",
+        fail_sends: int = 0,
+    ) -> None:
+        self.result = result
+        self.extras: dict[str, object] = {}
+        self.sent: list = []
+        self.platform_name = platform_name
+        self.self_id = self_id
+        # 模拟协议端不支持合并转发：前 N 次 send 直接报错
+        self.fail_sends = fail_sends
+
+    def get_result(self) -> MessageEventResult:
+        return self.result
+
+    def get_platform_name(self) -> str:
+        return self.platform_name
+
+    def get_self_id(self) -> str:
+        return self.self_id
+
+    def set_extra(self, key, value) -> None:
+        self.extras[key] = value
+
+    def get_extra(self, key: str | None = None, default=None):
+        if key is None:
+            return self.extras
+        return self.extras.get(key, default)
+
+    async def send(self, chain) -> None:
+        if self.fail_sends > 0:
+            self.fail_sends -= 1
+            raise RuntimeError("forward message not supported")
+        self.sent.append(chain)
+
+
+def _long_reply() -> str:
+    return "这是一段很长的回复。" * 20 + "\n官方下载地址：https://example.com/file.zip"
+
+
+async def test_copy_extra_is_sent_after_the_image(plugin):
+    core = RecordingConfig({"t2i": True, "t2i_word_threshold": 150})
+    instance = plugin_main.T2IServicePlugin(
+        FakeContext(core),
+        {"server": {"enabled": False, "port": free_port()}, "output": {"copy_extra": "merged"}},
+    )
+    event = FakeHookEvent(MessageEventResult(chain=[Plain(_long_reply())]))
+
+    await instance.on_decorating_result(event)
+
+    assert event.get_extra(COPY_EXTRA_KEY)
+    # 图片里仍保留原文：钩子只读不改
+    assert event.result.chain[0].text == _long_reply()
+
+    # AstrBot 渲染成功：整条结果被替换成一张图片
+    event.result = MessageEventResult(chain=[Image.fromURL("https://example.com/out.png")])
+    await instance.on_after_message_sent(event)
+
+    # 默认走 QQ 合并转发：一条转发消息，里面装着可复制片段
+    assert len(event.sent) == 1
+    node = event.sent[0].chain[0]
+    assert isinstance(node, Node)
+    text = "".join(part.text for part in node.content if isinstance(part, Plain))
+    assert "https://example.com/file.zip" in text
+    # 补发只做一次，不会因为 extra 残留而重复发送
+    assert event.get_extra(COPY_EXTRA_KEY) is None
+
+
+async def test_copy_extra_only_sends_selected_kinds(plugin):
+    """只勾了链接时，代码块不补发；图片里的内容仍整段保留。"""
+    reply = (
+        "这是一段很长的回复。" * 20
+        + "\n官方下载地址：https://example.com/file.zip"
+        + "\n```\nprint('hello')\n```"
+    )
+    core = RecordingConfig({"t2i": True, "t2i_word_threshold": 150})
+    instance = plugin_main.T2IServicePlugin(
+        FakeContext(core),
+        {
+            "server": {"enabled": False, "port": free_port()},
+            "output": {"copy_extra": "single", "copy_kinds": ["links"]},
+        },
+    )
+    event = FakeHookEvent(MessageEventResult(chain=[Plain(reply)]))
+
+    await instance.on_decorating_result(event)
+    event.result = MessageEventResult(chain=[Image.fromURL("https://example.com/out.png")])
+    await instance.on_after_message_sent(event)
+
+    assert len(event.sent) == 1
+    text = event.sent[0].chain[0].text
+    assert "https://example.com/file.zip" in text
+    assert "print(" not in text
+
+
+async def test_copy_extra_forward_falls_back_to_plain_text(plugin):
+    """协议端不支持合并转发时退回一条普通文本，内容不能丢。"""
+    core = RecordingConfig({"t2i": True, "t2i_word_threshold": 150})
+    instance = plugin_main.T2IServicePlugin(
+        FakeContext(core),
+        {"server": {"enabled": False, "port": free_port()}, "output": {"copy_extra": "merged"}},
+    )
+    event = FakeHookEvent(
+        MessageEventResult(chain=[Plain(_long_reply())]), fail_sends=1
+    )
+
+    await instance.on_decorating_result(event)
+    event.result = MessageEventResult(chain=[Image.fromURL("https://example.com/out.png")])
+    await instance.on_after_message_sent(event)
+
+    assert len(event.sent) == 1
+    assert isinstance(event.sent[0].chain[0], Plain)
+    assert "https://example.com/file.zip" in event.sent[0].chain[0].text
+
+
+async def test_copy_extra_is_skipped_when_render_falls_back_to_text(plugin):
+    core = RecordingConfig({"t2i": True, "t2i_word_threshold": 150})
+    instance = plugin_main.T2IServicePlugin(
+        FakeContext(core),
+        {"server": {"enabled": False, "port": free_port()}, "output": {"copy_extra": "merged"}},
+    )
+    event = FakeHookEvent(MessageEventResult(chain=[Plain(_long_reply())]))
+
+    await instance.on_decorating_result(event)
+    # 渲染失败时 AstrBot 发的是原文，原文里本来就能复制，不能再补一遍
+    await instance.on_after_message_sent(event)
+
+    assert event.sent == []
+
+
+async def test_status_text_shows_selected_kinds(plugin):
+    instance = plugin(
+        {
+            "server": {"enabled": False, "port": free_port()},
+            "output": {"copy_kinds": ["links", "paths"]},
+        }
+    )
+    assert "可复制内容补发：合并转发（仅 链接、文件路径）" in instance._status_text()
+
+
+async def test_copy_extra_does_nothing_when_switched_off(plugin):
+    core = RecordingConfig({"t2i": True, "t2i_word_threshold": 150})
+    instance = plugin_main.T2IServicePlugin(
+        FakeContext(core),
+        {"server": {"enabled": False, "port": free_port()}, "output": {"copy_extra": "off"}},
+    )
+    event = FakeHookEvent(MessageEventResult(chain=[Plain(_long_reply())]))
+
+    await instance.on_decorating_result(event)
+
+    assert event.get_extra(COPY_EXTRA_KEY) is None
+
+
 async def test_apply_endpoint_config_is_noop_when_switch_off(plugin):
     """没打开自动写入时不碰 AstrBot 主配置，也不开总开关。"""
     core = RecordingConfig({"t2i": False, "t2i_endpoint": "", "t2i_strategy": "local"})
@@ -616,3 +783,48 @@ async def test_apply_template_writes_slot_and_core_config(tmp_path, monkeypatch)
     assert state["active"] is True
     assert state["source"] == "beta"
     assert state["endpoint"] == instance.settings.resolve_service_url()
+
+
+class ProfileContext(FakeContext):
+    """支持按会话取配置档案的 Context。"""
+
+    def __init__(self, default: dict, profiles: dict[str, dict]) -> None:
+        super().__init__(default)
+        self.profiles = profiles
+
+    def get_config(self, umo: str | None = None) -> dict:
+        if umo is None:
+            return self._config
+        return self.profiles.get(umo, self._config)
+
+
+async def test_copy_extra_reads_the_session_config_profile(plugin):
+    """配置档案里开了 t2i 时也要补发，不能只看默认配置。"""
+    context = ProfileContext(
+        {"t2i": False},
+        {"qq:FriendMessage:42": {"t2i": True, "t2i_word_threshold": 150}},
+    )
+    instance = plugin_main.T2IServicePlugin(
+        context,
+        {"server": {"enabled": False, "port": free_port()}, "output": {"copy_extra": "merged"}},
+    )
+    event = FakeHookEvent(MessageEventResult(chain=[Plain(_long_reply())]))
+    event.unified_msg_origin = "qq:FriendMessage:42"
+
+    await instance.on_decorating_result(event)
+
+    assert event.get_extra(COPY_EXTRA_KEY)
+
+
+def test_copy_extra_hooks_are_registered():
+    """两个钩子必须真的挂到 AstrBot 事件总线上，否则功能静默不生效。"""
+    from astrbot.core.star.star_handler import EventType, star_handlers_registry
+
+    decorating = star_handlers_registry.get_handlers_by_event_type(
+        EventType.OnDecoratingResultEvent, only_activated=False
+    )
+    sent = star_handlers_registry.get_handlers_by_event_type(
+        EventType.OnAfterMessageSentEvent, only_activated=False
+    )
+    assert any(h.handler_name == "on_decorating_result" for h in decorating)
+    assert any(h.handler_name == "on_after_message_sent" for h in sent)

@@ -10,6 +10,7 @@ import html as _html
 import time
 from pathlib import Path
 
+from t2i_plugin.config import COPY_EXTRA_LABELS, format_copy_kinds_note
 
 _BASE_STYLE = """
   * { box-sizing: border-box; }
@@ -230,6 +231,13 @@ def build_status_card(payload: dict) -> str:
             f' 策略：{_esc(endpoint.get("astrbot_t2i_strategy") or "未知")}'
             f' 输出开关：{_esc("开" if endpoint.get("astrbot_t2i_enabled") else "关")}'
             f' 阈值：{_esc(output.get("astrbot_word_threshold") or output.get("word_threshold") or 150)} 字',
+        ),
+        row(
+            "可复制内容补发",
+            _esc(
+                COPY_EXTRA_LABELS.get(str(output.get("copy_extra")), "合并转发")
+                + format_copy_kinds_note(output.get("copy_kinds") or [])
+            ),
         ),
         row("浏览器目录", _esc(browser.get("browsers_path", "")), mono=True),
         row("插件运行时长", f"{uptime / 60:.1f} 分钟"),

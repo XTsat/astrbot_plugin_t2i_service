@@ -16,6 +16,7 @@ Renders HTML / Jinja2 templates into images inside the AstrBot process and serve
 - **Templates in one click**: the **T2I templates** tab shows a real render, the source and the size of every template; hit **Apply** and AstrBot's text-to-image template switches to it.
 - **No endpoint to copy by hand**: optionally the plugin writes its own address into AstrBot's text-to-image config for you.
 - **Rendering timing under your control**: the text-to-image output switch and the word threshold are edited right on the plugin config page, no diving into AstrBot's core config.
+- **Copyable bits sent again as text**: once a reply is rendered into an image, links, code blocks, config lines and file paths can no longer be copied; the plugin sends them again as an extra message (a QQ merged-forward message by default), while the image itself stays unchanged. Pick which kinds to detect, so links alone are fine.
 - **Rendering stays available**: while local rendering is unavailable, requests are proxied to the fallback endpoint so text-to-image keeps working in chat.
 - **Status at a glance**: `/t2i_status` reports the service, the browser, system libraries, the endpoint and render stats; `/t2i_test` renders a card on the spot.
 - **Same interface as upstream**: AstrBot and any compatible client need no code changes.
@@ -131,6 +132,16 @@ Decide right on the plugin config page when AstrBot renders a reply into an imag
 | --- | --- | --- | --- |
 | Text-to-image output (`enabled`) | switch | off | Maps to AstrBot's `t2i`; longer replies become images. Takes effect as soon as you save |
 | Word threshold (`word_threshold`) | number | `150` | Maps to `t2i_word_threshold`; only replies longer than this become images, minimum 50. Restart AstrBot for a new threshold to take effect |
+
+<details>
+<summary>Copyable content follow-up (2)</summary>
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| Send copyable content from images as text (`copy_extra`) | dropdown | merged forward | How to send them again (the image itself is unchanged): merged forward (QQ merged message) / one plain text / one message per item / off |
+| Content to detect and re-send (`copy_kinds`) | multi-select | all | Tick only what you need: links / code blocks / config lines / file paths; tick links only to skip the rest (links inside code blocks still count as links), untick everything to send nothing |
+
+</details>
 
 > On first install or upgrade the switch and threshold are adopted from AstrBot's current settings; after that the plugin config wins. There is also a plugin-maintained hidden flag (`core_synced`) that needs no manual changes.
 
@@ -259,6 +270,9 @@ Change **Listen port**, then re-enable **Write AstrBot's text-to-image endpoint 
 
 **Text-to-image broken after an AstrBot restart**
 Check that `t2i_endpoint` still targets the plugin's listen address; `/t2i_status` shows the address the plugin actually uses.
+
+**Why does a text message follow the image?**
+Links, code blocks, config lines and file paths inside an image cannot be copied, so the plugin picks them out and sends them again. By default they go out as a QQ merged-forward message; under **AstrBot text-to-image output** you can switch to one plain text, one message per item, or turn it off, and tick only the kinds you want (for example links only). The image still contains the original text.
 
 **Why did my new word threshold not take effect?**
 AstrBot caches the threshold at startup. Restart AstrBot once after saving the plugin config before subsequent messages use the new value; the output switch and the follow-up mode apply as soon as you save.

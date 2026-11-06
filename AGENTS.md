@@ -23,14 +23,14 @@
 
 | 文件 / 目录 | 必选 | 职责 |
 |------|------|------|
-| `main.py` | ✅ | Star 插件入口：生命周期、5 个命令、周期清理、端点写入 |
+| `main.py` | ✅ | Star 插件入口：生命周期、5 个命令、周期清理、端点写入、落图前后的两个钩子 |
 | `metadata.yaml` | ✅ | 插件元数据（name/version/author/desc/repo/astrbot_version/tags），**唯一版本源** |
 | `_conf_schema.json` | ✅ | WebUI 配置 Schema（`server` / `render` / `browser` / `endpoint` / `output` / `storage` / `fonts` / `templates` 八段） |
 | `README.md` + `README_en.md` | ✅ | 用户文档，中文版为权威源 |
 | `CHANGELOG.md` | ✅ | 变更日志 |
 | `LICENSE` + `NOTICE` | ✅ | Apache-2.0；`NOTICE` 记录上游基底与移植说明，**不可删** |
 | `requirements.txt` | ✅ | 插件模式运行时依赖（当前只有固定版本的 `playwright`） |
-| `t2i_plugin/` | ✅ | 插件适配层：`config` / `browser` / `server` / `card` / `fonts` / `font_web` / `templates` / `template_web` / `plugin_templates/`（随插件发布的转图模板） |
+| `t2i_plugin/` | ✅ | 插件适配层：`config` / `browser` / `server` / `card` / `fonts` / `font_web` / `templates` / `template_web` / `copy_extra` / `plugin_templates/`（随插件发布的转图模板） |
 | `t2i_core/` | ✅ | 渲染核心（自上游移植）：`render` / `api` / `storage` / `metrics` / `util`，**零 AstrBot 依赖** |
 | `service/main.py` | ✅ | 独立服务（FastAPI）入口；插件模式下不执行 |
 | `tests/` | ✅ | pytest 套件（核心层 + 插件层），CI 主线 |
@@ -67,6 +67,7 @@ astrbot_plugin_t2i_service/
 │   ├── config.py           # 配置模型：AstrBotConfig → 嵌套 dataclass
 │   ├── browser.py          # Chromium 检测 / 下载 / 孤儿清理 / 进程扫描
 │   ├── server.py           # aiohttp 内嵌服务，对齐上游 /text2img 契约
+│   ├── copy_extra.py       # 文转图回复里可复制内容的提取与补发排版
 │   └── card.py             # 状态卡片 / 自检卡片 HTML
 ├── t2i_core/               # 渲染核心（零 AstrBot 依赖）
 │   ├── render.py           # Playwright 渲染、截图参数、模板引擎
@@ -111,6 +112,7 @@ service/main.py ─────────────────────�
 | 转图模板清单 / 新建编辑删除 / 应用 / 预览缓存 | `t2i_plugin/templates.py`（用户目录、插件自带目录与内置目录三处模板合并、新建与保存用户模板、显示名与删除、槽位模板写入、预览图缓存） |
 | 随插件发布的转图模板 | `t2i_plugin/plugin_templates/*.html` + `plugin_templates/assets/`（文件名即模板名，面板来源显示为「插件」；模板里按 `assets/文件名` 引用图片，读模板时内联成 data URI；同名的以用户副本为准，其次以插件自带为准） |
 | 面板页面（插件内嵌页面） | `views/fonts/`（一个页面，tab 切换「概览」「T2i 模板」「对接项目」，「对接项目」栏里再用二级 tab 显示上游项目名；栏位切换按 DOM 里的 tab/panel 配对自动接管，加栏位只改 HTML，不要再拆视图；配色只跟随桥写到 `<html data-theme>` 的浅/深色，文案一律走 `pages.fonts.*` 的 i18n，不在 JS 里写死中文；视图的通用规则（bridge、沙箱、接口注册）见 4.10） |
+| 转图回复里可复制内容的提取与补发排版 | `t2i_plugin/copy_extra.py`（钩子的注册与发送在 `main.py`） |
 | HTTP 契约、鉴权、失败透传 | `t2i_plugin/server.py` |
 | 渲染与截图行为、模板处理 | `t2i_core/render.py` |
 | 图片存储与过期 | `t2i_core/storage.py`、`t2i_core/util.py` |
@@ -291,7 +293,7 @@ class T2IServicePlugin(Star):
 | `render` | `concurrency`、`no_sandbox`、`idle_timeout_seconds`、`prelaunch`、`default_type`、`default_quality`、`full_page` | 渲染行为 |
 | `browser` | `browsers_path`、`download_host`、`executable_path`、`auto_install_deps`、`cleanup_orphans`、`install_timeout_seconds` | 浏览器供给 |
 | `endpoint` | `auto_configure`、`service_url`、`current_service_url`（展示用，插件回写） | 是否写 AstrBot 主配置 |
-| `output` | `enabled`、`word_threshold`、`core_synced`（回写标记，隐藏） | AstrBot 文转图输出：什么时候把回复转成图片 |
+| `output` | `enabled`、`word_threshold`、`copy_extra`、`copy_kinds`、`core_synced`（回写标记，隐藏） | AstrBot 文转图输出：什么时候转图、可复制内容识别哪几类、怎么补发 |
 | `storage` | `image_lifetime_hours`、`cleanup_interval_minutes` | 图片留存与清理 |
 | `fonts` | `enabled`、`github_proxy`、`upload_limit_mb`、`restart_browser_on_change` | 字体供给（下载/上传在插件页面的「文转图服务面板」里做） |
 | `templates` | `refresh_minutes` | 插件自带模板的数据刷新间隔 |
@@ -319,7 +321,7 @@ class T2IServicePlugin(Star):
 
 ### 5.4 写 AstrBot 主程序配置
 
-只有「端点自动写入」这一处会改 AstrBot 主配置：
+只有「端点自动写入」与「文转图输出同步」两处会改 AstrBot 主配置：
 
 ```python
 core_config = self.context.get_config()
@@ -357,7 +359,12 @@ async def cmd_status(self, event: AstrMessageEvent):
 
 ### 6.3 事件监听
 
-本项目目前**没有**事件监听器（交互全部走 5 个命令）；确实需要被动处理消息时再新增：
+项目原本只有 5 个命令，现在多了两个被动钩子（`main.py` 的「可复制内容补发」分节），用来处理「回复被 AstrBot 渲染成图片后，图里的链接/配置复制不了」：
+
+- `@filter.on_decorating_result()`（`on_decorating_result`）：落图前判定这条结果会不会被渲染，会的话把值得复制的片段挂到 `event` extra 上。
+- `@filter.after_message_sent()`（`on_after_message_sent`）：确认原消息确实变成了图片（渲染失败退化成文字时不补发），再按 `output.copy_extra` 补发：`merged` 在 QQ（aiocqhttp）上发合并转发消息（`Node`），其它平台或发送失败时退化成一条普通文本；`single` 一条普通文本；`separate` 每项一条；`off` 不补发。图片本身不改，片段仍保留在图里。
+
+提取规则与排版在 `t2i_plugin/copy_extra.py`，`output.copy_kinds` 控制识别哪几类（`links` / `code` / `config` / `paths`，多选 checkbox）；判定条件与 AstrBot 的 `ResultDecorateStage` 保持一致（t2i 开关、开头的连续纯文本、字数下限）。新增其他监听器时参考下面的写法：
 
 ```python
 @filter.event_message_type(filter.EventMessageType.ALL)
@@ -547,7 +554,7 @@ README 正文严格按以下 4 大板块组织，但不强制使用 `##` 标题�
 
 - **配置表是备查资料，不是配置入口**：用户在 WebUI 插件详情页的设置里直接改配置、改完即时生效，很少专门翻 README 找配置项——阈值放低，说明列写短，只讲「这一项控制什么」。
 - 配置少就不分类：**≤ 4 项**直接一张表，不为了对称硬拆小节。
-- 更多就按类别分组：每类一个 `###` 子标题 + 该类一张表，顺序按用户上手顺序（基础/常用在前，进阶/排障在后）；分类要与 `_conf_schema.json` 的真实结构对得上（顶层 key 与 `object` 分组），不要写出 WebUI 里根本不存在的分组。本项目 README 已按 `_conf_schema.json` 的 7 段分组，新增配置项挂进对应小节即可。
+- 更多就按类别分组：每类一个 `###` 子标题 + 该类一张表，顺序按用户上手顺序（基础/常用在前，进阶/排障在后）；分类要与 `_conf_schema.json` 的真实结构对得上（顶层 key 与 `object` 分组），不要写出 WebUI 里根本不存在的分组。本项目 README 已按 `_conf_schema.json` 的 8 段分组，新增配置项挂进对应小节即可。
 - **单类 ≥ 4 项就折叠**，或属于纯参考内容（逐字段明细、平台对照表、模板变量）时，把该类整表包进 `<details>` 折叠，`<summary>` 自解释（类别名 + 项数）：
 
 ```markdown

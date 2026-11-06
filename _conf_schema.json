@@ -125,7 +125,7 @@
   "output": {
     "description": "AstrBot 文转图输出",
     "type": "object",
-    "hint": "决定 AstrBot 什么时候把回复转成图片：总开关与转图字数阈值。保存后插件会热重载，总开关立即生效，字数阈值要等重启 AstrBot 才生效。",
+    "hint": "决定 AstrBot 什么时候把回复转成图片，以及图片里复制不了的内容要不要另发一条文本。保存后插件会热重载：总开关与补发方式立即生效，字数阈值要等重启 AstrBot 才生效。",
     "items": {
       "enabled": {
         "description": "文本转图像输出（总开关）",
@@ -143,6 +143,51 @@
         },
         "hint": "对应 AstrBot 主配置的 t2i_word_threshold：回复文字超过该字数才转成图片，不到阈值直接发文字，AstrBot 最小按 50 处理。AstrBot 在启动时缓存这个阈值，所以改完要重启一次 AstrBot 才对后续消息生效；总开关与补发方式保存即生效。",
         "default": 150
+      },
+      "copy_extra": {
+        "description": "图片里的可复制内容另发文本",
+        "type": "string",
+        "options": [
+          "merged",
+          "single",
+          "separate",
+          "off"
+        ],
+        "labels": [
+          "合并转发（默认）",
+          "不合并（一条普通文本）",
+          "拆分（每项单独一条）",
+          "关闭"
+        ],
+        "hint": "回复被渲染成图片后，图片里的链接、代码块、配置行与文件路径没法长按复制；插件把这些片段额外发一条文本，图片本身不变、片段仍留在图里。默认走 QQ 的合并转发消息（合并消息）；选「不合并」发一条普通文本；选「拆分」每项单独一条；其它平台没有合并转发，会自动退化成普通文本。",
+        "default": "merged"
+      },
+      "copy_kinds": {
+        "description": "要识别并补发的内容",
+        "type": "list",
+        "items": {
+          "type": "string"
+        },
+        "options": [
+          "links",
+          "code",
+          "config",
+          "paths"
+        ],
+        "labels": [
+          "链接",
+          "代码块",
+          "配置行",
+          "文件路径"
+        ],
+        "render_type": "checkbox",
+        "default": [
+          "links",
+          "code",
+          "config",
+          "paths"
+        ],
+        "hint": "勾选哪些内容会被挑出来补发：只要链接就只勾「链接」并取消其余项；全部取消等于不补发。只勾「链接」时，代码块里的链接仍会被当作链接挑出来。"
       },
       "core_synced": {
         "description": "已从 AstrBot 主配置取过初始设置（插件自动维护）",

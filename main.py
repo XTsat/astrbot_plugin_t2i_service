@@ -44,9 +44,11 @@ for _stale in [
 from astrbot.api import AstrBotConfig, logger  # noqa: E402
 from astrbot.api.event import (  # noqa: E402
     AstrMessageEvent,
+    MessageChain,
     MessageEventResult,
     filter,
 )
+from astrbot.api.message_components import Plain  # noqa: E402
 from astrbot.api.star import Context, Star  # noqa: E402
 from astrbot.core.utils.astrbot_path import (  # noqa: E402
     get_astrbot_plugin_data_path,
@@ -72,9 +74,19 @@ from t2i_plugin.card import (  # noqa: E402
     build_test_card,
 )
 from t2i_plugin.config import (  # noqa: E402
+    COPY_EXTRA_LABELS,
     DEFAULT_FALLBACK_ENDPOINT,
     T2IConfig,
     coerce_word_threshold,
+    format_copy_kinds_note,
+)
+from t2i_plugin.copy_extra import (  # noqa: E402
+    COPY_EXTRA_KEY,
+    FORWARD_PLATFORM,
+    build_copy_chains,
+    format_copy_text,
+    pending_copy_items,
+    rendered_as_image,
 )
 from t2i_plugin.font_web import FontWebApi  # noqa: E402
 from t2i_plugin.fonts import (  # noqa: E402
@@ -700,6 +712,63 @@ class T2IServicePlugin(Star):
             "output_enabled": self._read_core_flag("t2i"),
         }
 
+    # ---------------------------------------------------- 可复制内容补发
+
+    def _event_core_config(self, event: AstrMessageEvent) -> dict:
+        """取该会话所属配置档案的 AstrBot 配置，配置档案功能未启用时退回默认配置。"""
+        try:
+            return self.context.get_config(event.unified_msg_origin)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            return self.context.get_config()
+
+    @filter.on_decorating_result()
+    async def on_decorating_result(self, event: AstrMessageEvent) -> None:
+        """落图前记下回复里值得复制的片段，等消息真的以图片发出后再补发。"""
+        if self.settings.output.copy_extra == "off":
+            return
+        try:
+            items = pending_copy_items(
+                event,
+                self._event_core_config(event),
+                self.settings.output.copy_kinds,
+            )
+        except Exception as exc:  # pragma: no cover - 钩子异常不能打断发送流程
+            logger.warning(f"[t2i] 提取可复制内容失败：{exc}")
+            return
+        if items:
+            event.set_extra(COPY_EXTRA_KEY, items)
+
+    @filter.after_message_sent()
+    async def on_after_message_sent(self, event: AstrMessageEvent) -> None:
+        """原回复确实变成了图片时，把落图前挑出的可复制片段补发出去。
+
+        图片本身不动（片段仍在图里），这里只额外发一条：默认 QQ 合并转发消息。
+        """
+        items = event.get_extra(COPY_EXTRA_KEY)
+        if not items:
+            return
+        event.set_extra(COPY_EXTRA_KEY, None)
+        # 渲染失败会退化成发文字，这时原消息里本来就能复制，补发只会重复一遍
+        if not rendered_as_image(event.get_result()):
+            return
+        mode = self.settings.output.copy_extra
+        platform = event.get_platform_name()
+        chains = build_copy_chains(
+            items, mode, self_id=event.get_self_id(), platform_name=platform
+        )
+        for chain in chains:
+            try:
+                await event.send(chain)
+            except Exception as exc:  # pragma: no cover - 补发失败不影响主消息
+                logger.warning(f"[t2i] 补发可复制内容失败：{exc}")
+                # 合并转发依赖 QQ 协议端；失败时退回一条普通文本，内容别丢
+                if mode == "merged" and platform == FORWARD_PLATFORM:
+                    try:
+                        await event.send(MessageChain([Plain(format_copy_text(items))]))
+                    except Exception as fallback_exc:  # pragma: no cover - 防御
+                        logger.warning(f"[t2i] 退回普通文本仍失败：{fallback_exc}")
+                return
+
     # -------------------------------------------------------------- 状态信息
 
     def _status_payload(self) -> dict:
@@ -731,6 +800,8 @@ class T2IServicePlugin(Star):
             "output": {
                 "enabled": self.settings.output.enabled,
                 "word_threshold": self.settings.output.word_threshold,
+                "copy_extra": self.settings.output.copy_extra,
+                "copy_kinds": list(self.settings.output.copy_kinds),
                 # AstrBot 主配置里的实际值：阈值改完要重启 AstrBot 才会被流水线读走
                 "astrbot_t2i_enabled": self._read_core_flag("t2i"),
                 "astrbot_word_threshold": self._read_core_config("t2i_word_threshold"),
@@ -799,6 +870,8 @@ class T2IServicePlugin(Star):
             f"（策略：{endpoint['astrbot_t2i_strategy'] or '未知'}，"
             f"输出开关：{'开' if endpoint['astrbot_t2i_enabled'] else '关'}，"
             f"字数阈值：{output['astrbot_word_threshold'] or output['word_threshold']} 字）",
+            f"可复制内容补发：{_copy_extra_label(output['copy_extra'])}"
+            f"{format_copy_kinds_note(output['copy_kinds'])}",
         ]
         if browser["deps"]["status"] != "idle":
             lines.append(
@@ -1030,6 +1103,11 @@ class T2IServicePlugin(Star):
             yield event.plain_result(f"✅ 内嵌服务已重启：{self.server.endpoint}")
         else:
             yield event.plain_result(f"❌ 重启失败：{message}")
+
+
+def _copy_extra_label(mode: str) -> str:
+    """状态文本里显示补发方式的中文名。"""
+    return COPY_EXTRA_LABELS.get(mode, COPY_EXTRA_LABELS["merged"])
 
 
 def _plugin_version() -> str:
