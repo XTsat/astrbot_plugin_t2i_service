@@ -64,6 +64,9 @@ const els = {
   t2iEditorSourceField: $("t2i-editor-source-field"),
   t2iEditorSource: $("t2i-editor-source"),
   t2iEditorContent: $("t2i-editor-content"),
+  t2iEditorAlignField: $("t2i-editor-align-field"),
+  t2iEditorAlign: $("t2i-editor-align"),
+  t2iEditorAlignHint: $("t2i-editor-align-hint"),
   t2iEditorError: $("t2i-editor-error"),
   t2iEditorDelete: $("t2i-editor-delete"),
   t2iEditorCancel: $("t2i-editor-cancel"),
@@ -1849,6 +1852,7 @@ async function openT2iEditor(name) {
     els.t2iEditorDelete.classList.remove("armed");
   }
   els.t2iEditorContent.value = "";
+  syncT2iAlignField("");
   hideT2iEditorError();
   // 编辑时正文要等接口返回，读完之前按提交只会撞上「内容不能为空」
   els.t2iEditorSubmit.disabled = editing;
@@ -1862,6 +1866,7 @@ async function openT2iEditor(name) {
   els.t2iEditorSubmit.disabled = false;
   if (data && typeof data.content === "string") {
     els.t2iEditorContent.value = data.content;
+    syncT2iAlignField(data.content);
     els.t2iEditorContent.focus();
   } else {
     showT2iEditorError(state.lastError || t("t2i.readFailed", "读不到模板内容"));
@@ -1918,7 +1923,10 @@ async function t2iDraftContent() {
 /** 渲染还没保存的正文并铺开预览区；后端只出图，不碰模板文件与预览缓存。 */
 async function previewT2iDraft() {
   if (!els.t2iEditorPreview || !els.t2iEditorPreviewBody) return;
-  const content = await t2iDraftContent();
+  const content = withT2iAlign(
+    await t2iDraftContent(),
+    els.t2iEditorAlign ? els.t2iEditorAlign.value : "auto",
+  );
   if (!content.trim()) {
     // 读起始内容失败也会走到这里，接口给的错误比「正文是空的」更具体
     showT2iEditorError(
@@ -1963,11 +1971,38 @@ function hideT2iEditorError() {
 }
 
 const T2I_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+// 正文对齐方式落在模板自己的这一行标记上：AstrBot 真实渲染只传 text / version，
+// 模板拿不到插件配置，所以由面板「编辑模板」保存时改写这行。
+const T2I_ALIGN_RE = /var TEXT_ALIGN = "([a-z]+)";/;
+const T2I_ALIGN_MODES = ["auto", "left", "justify", "center", "right"];
+
+function t2iAlignOf(content) {
+  const match = T2I_ALIGN_RE.exec(content || "");
+  const mode = match ? match[1] : "";
+  return T2I_ALIGN_MODES.includes(mode) ? mode : "auto";
+}
+
+/** 把选中的对齐方式写回正文；没有标记行的模板（AstrBot 自带、用户自建）原样返回。 */
+function withT2iAlign(content, mode) {
+  if (!T2I_ALIGN_RE.test(content || "")) return content;
+  return content.replace(T2I_ALIGN_RE, `var TEXT_ALIGN = "${mode}";`);
+}
+
+/** 模板没有标记行就把这个下拉收起来，免得改了不生效还以为坏了。 */
+function syncT2iAlignField(content) {
+  const supported = T2I_ALIGN_RE.test(content || "");
+  if (els.t2iEditorAlignField) els.t2iEditorAlignField.hidden = !supported;
+  if (els.t2iEditorAlignHint) els.t2iEditorAlignHint.hidden = !supported;
+  if (supported && els.t2iEditorAlign) els.t2iEditorAlign.value = t2iAlignOf(content);
+}
 
 async function submitT2iEditor() {
   const editing = Boolean(state.t2iEditing);
   const name = (els.t2iEditorName.value || "").trim();
-  const content = els.t2iEditorContent.value || "";
+  const content = withT2iAlign(
+    els.t2iEditorContent.value || "",
+    els.t2iEditorAlign ? els.t2iEditorAlign.value : "auto",
+  );
   const title = (els.t2iEditorDisplay ? els.t2iEditorDisplay.value || "" : "").trim();
   if (!editing && !T2I_NAME_PATTERN.test(name)) {
     // 与后端同一套规则，先在页面上拦一次，省一个来回

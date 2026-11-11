@@ -183,6 +183,25 @@ def test_shipped_templates_keep_weather_stable_within_a_day():
         assert "captions[(seed >>> 7)" in text, path.name
 
 
+def test_shipped_templates_left_align_mixed_script_blocks():
+    """两端对齐只留给纯中文段落。
+
+    日记体中文两端对齐好看，但消息里混进英文单词、JSON 或报错日志时，浏览器为了撑满
+    行宽会把空格拉成大片空白，所以正文渲染完要逐块判定、把拉丁内容的块改回左对齐。
+    """
+    for path in sorted(SHIPPED_DIR.glob("*.html")):
+        text = path.read_text(encoding="utf-8")
+        assert "text-align: justify" in text, path.name
+        assert "function relaxJustify(root)" in text, path.name
+        assert "relaxJustify(body);" in text, path.name
+        # 判据只看拉丁字母与数字，标点不算，否则一句中文加个冒号就被判成拉丁段落
+        assert "text.match(/[A-Za-z0-9]/g)" in text, path.name
+        # 对齐方式的标记行要留着（面板「编辑模板」保存时改写这一行），
+        # 且 left / center / right / justify 四种固定模式与 auto 的逐块判定都要认
+        assert 'var TEXT_ALIGN = "auto";' in text, path.name
+        assert "var FIXED_ALIGN = { left: 1, center: 1, right: 1, justify: 1 };" in text, path.name
+
+
 def test_refresh_minutes_are_baked_into_the_template(dirs, monkeypatch):
     """刷新间隔靠读模板时写进 HTML：AstrBot 真实渲染不传 Jinja 变量。"""
     gallery, *_ = dirs

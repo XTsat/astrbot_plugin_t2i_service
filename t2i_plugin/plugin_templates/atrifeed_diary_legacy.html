@@ -332,6 +332,8 @@
             /* 正文渲染成 HTML 后换行由 <br> 负责，pre-wrap 会把生成的标签间隙也画成空行 */
             white-space: normal;
             overflow-wrap: anywhere;
+            /* 纯中文段落两端对齐好看；含英文单词、JSON 或报错的块由文末脚本改回左对齐，
+               否则浏览器为了撑满行宽会把空格拉成大片空白 */
             text-align: justify;
             text-justify: inter-ideograph;
         }
@@ -539,6 +541,8 @@
   <script>
     (function () {
       var REFRESH_MINUTES = 15;   // 由插件按配置改写，见 templates.refresh_minutes
+      // 正文对齐方式：auto / left / center / right / justify，由面板「编辑模板」保存时改写
+      var TEXT_ALIGN = "auto";
       function set(id, text) {
         var el = document.getElementById(id);
         if (el) el.textContent = text;
@@ -570,6 +574,29 @@
       // 预览（面板里的模板图）每次都换一档天气；真实出图按天固定
       var PREVIEW = "{{ preview | default('') }}" !== "";
 
+      // 两端对齐只对纯中文段落好看：正文混进英文单词、JSON 或报错时，浏览器会把行内空格
+      // 拉成大片空白，所以逐块判定：拉丁字母数字达到中日文一半的块改回左对齐。
+      // 渲染器没加载出来时正文只剩根节点一层文字，此时按整块判定。
+      // 对齐方式由面板「编辑模板」改写 TEXT_ALIGN，这里只负责按它排版。
+      var FIXED_ALIGN = { left: 1, center: 1, right: 1, justify: 1 };
+      function relaxJustify(root) {
+        if (!root) return;
+        var fixed = FIXED_ALIGN[TEXT_ALIGN] ? TEXT_ALIGN : "";
+        var blocks = root.querySelectorAll("p, li, blockquote, h1, h2, h3, h4, h5, h6, td, th, pre");
+        var targets = blocks.length ? blocks : [root];
+        for (var i = 0; i < targets.length; i += 1) {
+          // 指定了固定对齐就照抄给每个块；auto 才逐块判定
+          if (fixed) {
+            targets[i].style.textAlign = fixed;
+            continue;
+          }
+          var text = targets[i].textContent || "";
+          var latin = (text.match(/[A-Za-z0-9]/g) || []).length;
+          var cjk = (text.match(/[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
+          if (latin * 2 >= cjk) targets[i].style.textAlign = "left";
+        }
+      }
+
       var body = document.getElementById("diary-body");
       // 正文按 Markdown 渲染；渲染器没加载出来时退回纯文本，至少内容还在
       var source = document.getElementById("diary-source");
@@ -577,6 +604,7 @@
       if (body) {
         body.textContent = plain;
         if (window.t2iMarkdown) body.innerHTML = window.t2iMarkdown(plain);
+        relaxJustify(body);
       }
       var now = new Date();
       var idx = (now.getDay() + 6) % 7;
