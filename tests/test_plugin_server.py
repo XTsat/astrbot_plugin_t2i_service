@@ -603,3 +603,72 @@ async def test_port_held_by_previous_instance_is_reported_as_own_service(
         assert "由上一次加载的插件实例占用" in detail
     finally:
         await zombie.stop()
+
+
+# ------------------------------------------------------------ 输出清晰度
+
+
+async def test_generate_uses_configured_scale_factor(client):
+    """AstrBot 请求不带清晰度参数时，配置里的像素比要真正落到渲染参数上。"""
+    test_client, _, renderer = client
+    resp = await test_client.post(
+        "/text2img/generate",
+        json={"html": "<p>x</p>", "options": {"type": "png", "full_page": True}},
+    )
+    assert resp.status == 200
+    options = [call for name, call in renderer.calls if name == "html2pic"][-1]
+    assert options.device_scale_factor == 2.0
+    assert options.device_scale_factor_level is None
+
+
+async def test_request_scale_level_wins_over_configured_factor(client):
+    """请求显式给了档位时，配置里的数字像素比不能把它顶掉。"""
+    test_client, _, renderer = client
+    resp = await test_client.post(
+        "/text2img/generate",
+        json={
+            "html": "<p>x</p>",
+            "options": {"type": "png", "device_scale_factor_level": "ultra"},
+        },
+    )
+    assert resp.status == 200
+    options = [call for name, call in renderer.calls if name == "html2pic"][-1]
+    assert options.device_scale_factor is None
+    assert options.device_scale_factor_level == "ultra"
+
+
+async def test_request_numeric_scale_factor_wins(client):
+    test_client, _, renderer = client
+    resp = await test_client.post(
+        "/text2img/generate",
+        json={"html": "<p>x</p>", "options": {"type": "png", "device_scale_factor": 1.5}},
+    )
+    assert resp.status == 200
+    options = [call for name, call in renderer.calls if name == "html2pic"][-1]
+    assert options.device_scale_factor == 1.5
+
+
+async def test_quality_floor_lifts_astrbot_default_quality(client):
+    """AstrBot 固定发 quality=40：低于下限时抬到下限，否则 2 倍像素下压缩痕迹明显。"""
+    test_client, _, renderer = client
+    resp = await test_client.post(
+        "/text2img/generate",
+        json={
+            "html": "<p>x</p>",
+            "options": {"full_page": True, "type": "jpeg", "quality": 40},
+        },
+    )
+    assert resp.status == 200
+    options = [call for name, call in renderer.calls if name == "html2pic"][-1]
+    assert options.quality == 70
+
+
+async def test_quality_floor_keeps_higher_requested_quality(client):
+    test_client, _, renderer = client
+    resp = await test_client.post(
+        "/text2img/generate",
+        json={"html": "<p>x</p>", "options": {"type": "jpeg", "quality": 95}},
+    )
+    assert resp.status == 200
+    options = [call for name, call in renderer.calls if name == "html2pic"][-1]
+    assert options.quality == 95

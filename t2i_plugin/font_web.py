@@ -50,8 +50,7 @@ class FontWebApi:
         manager: FontManager,
         *,
         enabled: bool = True,
-        specimen: Callable[[list[str], str, str, str], Awaitable[tuple[bool, str]]]
-        | None = None,
+        specimen: Callable[..., Awaitable[tuple[bool, str]]] | None = None,
     ) -> None:
         self.plugin_name = plugin_name
         self.manager = manager
@@ -225,14 +224,16 @@ class FontWebApi:
         )
         if not names:
             names = _installed_family_names(self.manager)
+        # 清晰度：优先用页面填的数字像素比，老客户端仍可传档位名
+        factor = _coerce_factor(payload.get("device_scale_factor"))
         raw_scale = payload.get("scale")
-        scale = raw_scale if raw_scale in SPECIMEN_SCALES else "normal"
+        scale = raw_scale if raw_scale in SPECIMEN_SCALES else ""
         raw_text = payload.get("text")
         text = raw_text.strip()[:SPECIMEN_TEXT_LIMIT] if isinstance(raw_text, str) else ""
         raw_weights = payload.get("weights")
         weights = raw_weights if raw_weights in SPECIMEN_WEIGHTS else "both"
         try:
-            ok, detail = await self.specimen(names, scale, text, weights)
+            ok, detail = await self.specimen(names, scale, text, weights, factor)
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"[t2i] 渲染字体预览失败：{exc}")
             return self._fail(f"渲染失败：{exc}", status_code=500)
@@ -245,6 +246,7 @@ class FontWebApi:
             {
                 "image": f"data:image/png;base64,{data}",
                 "families": names,
+                "device_scale_factor": factor,
                 "scale": scale,
                 "text": text,
                 "weights": weights,
@@ -252,8 +254,21 @@ class FontWebApi:
         )
 
 
-# 预览图的像素比等级，与渲染器的 device_scale_factor_level 取值一致
+# 老客户端仍可能传档位名；新页面直接传数字像素比
 SPECIMEN_SCALES = ("normal", "high", "ultra")
+
+
+def _coerce_factor(value: object) -> float | None:
+    """把页面传来的清晰度转成像素比；非法值返回 None（交给渲染器默认值）。"""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        factor = float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    if factor <= 0:
+        return None
+    return factor
 
 # 每个家族要画哪几种字重的行：两者都画 / 只画常规 / 只画粗体
 SPECIMEN_WEIGHTS = ("both", "regular", "bold")

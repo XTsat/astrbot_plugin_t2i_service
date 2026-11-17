@@ -77,19 +77,22 @@ async def test_config_is_parsed_into_components(plugin):
 
 
 async def test_only_panel_web_apis_are_registered(plugin):
-    # 插件只给「文转图服务面板」注册 Web API：字体供给与模板栏位两组；
-    # 渲染与存储都走 /text2img 契约，不该在插件层另开入口。
+    # 插件只给「文转图服务面板」注册 Web API：字体供给、模板栏位与出图参数三组；
+    # 真实出图与存储仍走 /text2img 契约，不该在插件层另开入口。
     port = free_port()
     instance = plugin(
         {"server": {"enabled": False, "port": port}, "render": {"prelaunch": False}}
     )
     routes = [route for route, _handler, _methods, _desc in instance.context.web_apis]
     prefix = "/astrbot_plugin_t2i_service"
-    assert len(routes) == len(set(routes)) == 18
+    # render/settings 同一路径分别注册 GET 与 POST，所以注册次数比路径数多一条
+    assert len(routes) == 21
+    assert len(set(routes)) == 20
     assert len([route for route in routes if route.startswith(f"{prefix}/fonts/")]) == 8
     assert (
         len([route for route in routes if route.startswith(f"{prefix}/templates/")]) == 10
     )
+    assert len([route for route in routes if route.startswith(f"{prefix}/render/")]) == 3
     assert all(route.startswith(prefix) for route in routes)
 
 

@@ -32,6 +32,16 @@ const els = {
   specimenCaption: $("specimen-caption"),
   specimenBox: $("specimen-box"),
   specimenImg: $("specimen-img"),
+  clarityScale: $("clarity-scale"),
+  clarityScaleNumber: $("clarity-scale-number"),
+  clarityQuality: $("clarity-quality"),
+  clarityQualityNumber: $("clarity-quality-number"),
+  clarityCurrent: $("clarity-current"),
+  clarityCaption: $("clarity-caption"),
+  clarityBox: $("clarity-box"),
+  clarityImg: $("clarity-img"),
+  btnClarityPreview: $("btn-clarity-preview"),
+  btnClaritySave: $("btn-clarity-save"),
   templates: $("templates"),
   templatesT2i: $("templates-t2i"),
   t2iFontDialog: $("t2i-font-dialog"),
@@ -1281,6 +1291,140 @@ function bindGrids() {
   });
 }
 
+// ---------------------------------------------------------------- 出图清晰度
+
+/** 把滑杆与数字框绑成一份值：任一侧改动都同步到另一侧。 */
+function bindClarityPair(rangeEl, numberEl, onChange) {
+  if (!rangeEl || !numberEl) return;
+  const push = (value, source) => {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return;
+    if (source !== rangeEl) rangeEl.value = String(number);
+    if (source !== numberEl) numberEl.value = String(number);
+    if (onChange) onChange(number);
+  };
+  rangeEl.addEventListener("input", () => push(rangeEl.value, rangeEl));
+  numberEl.addEventListener("input", () => push(numberEl.value, numberEl));
+}
+
+/** 显示「当前生效」的那一行：用户需要知道改动有没有真的落地。 */
+function renderClarityCurrent(settings) {
+  if (!els.clarityCurrent || !settings) return;
+  els.clarityCurrent.textContent = t(
+    "clarity.current",
+    "当前生效：清晰度 {scale}x · 质量下限 {floor} · 默认质量 {quality} · 格式 {type}",
+    {
+      scale: Number(settings.device_scale_factor).toFixed(1),
+      floor: settings.quality_floor,
+      quality: settings.default_quality,
+      type: String(settings.default_type || "").toUpperCase(),
+    },
+  );
+}
+
+/** 拉一次出图参数并填进控件；页面打开时与保存后都会调用。 */
+async function loadClaritySettings() {
+  if (!els.clarityScale) return;
+  const data = await apiGet("render/settings");
+  if (!data) return;
+  state.clarity = data;
+  const ranges = data.ranges || {};
+  const scaleRange = ranges.device_scale_factor || {};
+  const qualityRange = ranges.quality || {};
+  for (const el of [els.clarityScale, els.clarityScaleNumber]) {
+    if (!el) continue;
+    if (scaleRange.min != null) el.min = String(scaleRange.min);
+    if (scaleRange.max != null) el.max = String(scaleRange.max);
+    if (scaleRange.step != null) el.step = String(scaleRange.step);
+    el.value = String(data.device_scale_factor);
+  }
+  for (const el of [els.clarityQuality, els.clarityQualityNumber]) {
+    if (!el) continue;
+    if (qualityRange.min != null) el.min = String(qualityRange.min);
+    if (qualityRange.max != null) el.max = String(qualityRange.max);
+    if (qualityRange.step != null) el.step = String(qualityRange.step);
+    el.value = String(data.quality_floor);
+  }
+  renderClarityCurrent(data);
+}
+
+/** 用当前控件里的值试拍一张样张，用来直观比较清晰度与质量。 */
+async function previewClarity() {
+  if (!els.btnClarityPreview) return;
+  const scale = Number(els.clarityScaleNumber ? els.clarityScaleNumber.value : 0);
+  const quality = Number(
+    els.clarityQualityNumber ? els.clarityQualityNumber.value : 0,
+  );
+  if (!Number.isFinite(scale) || !Number.isFinite(quality)) return;
+  els.btnClarityPreview.disabled = true;
+  els.btnClarityPreview.textContent = t("clarity.previewing", "试拍中…");
+  try {
+    const data = await apiPost("render/preview", {
+      device_scale_factor: scale,
+      quality,
+    });
+    if (!data) return;
+    els.clarityImg.src = data.image;
+    els.clarityBox.hidden = false;
+    const kb = Math.max(1, Math.round((Number(data.bytes) || 0) / 1024));
+    els.clarityCaption.hidden = false;
+    els.clarityCaption.textContent = t(
+      "clarity.caption",
+      "本次样张：清晰度 {scale}x · 质量 {quality} · 约 {kb} KB（数值越大越清晰、文件也越大）",
+      { scale: Number(data.device_scale_factor).toFixed(1), quality: data.quality, kb },
+    );
+  } finally {
+    els.btnClarityPreview.disabled = false;
+    els.btnClarityPreview.textContent = t("clarity.preview", "试拍样张");
+  }
+}
+
+/** 保存清晰度与质量：保存后立刻对后续出图生效，不需要重启插件。 */
+async function saveClarity() {
+  if (!els.btnClaritySave) return;
+  const scale = Number(els.clarityScaleNumber ? els.clarityScaleNumber.value : 0);
+  const quality = Number(
+    els.clarityQualityNumber ? els.clarityQualityNumber.value : 0,
+  );
+  if (!Number.isFinite(scale) || !Number.isFinite(quality)) {
+    toast(t("clarity.invalid", "清晰度与质量都要填数字"), "err");
+    return;
+  }
+  els.btnClaritySave.disabled = true;
+  els.btnClaritySave.textContent = t("clarity.saving", "保存中…");
+  try {
+    const data = await apiPost("render/settings", {
+      device_scale_factor: scale,
+      quality_floor: quality,
+    });
+    if (!data) return;
+    state.clarity = data;
+    renderClarityCurrent(data);
+    toast(
+      t("clarity.saved", "已保存：清晰度 {scale}x · 质量下限 {floor}，后续出图立即生效", {
+        scale: Number(data.device_scale_factor).toFixed(1),
+        floor: data.quality_floor,
+      }),
+      "ok",
+    );
+  } finally {
+    els.btnClaritySave.disabled = false;
+    els.btnClaritySave.textContent = t("clarity.save", "保存并生效");
+  }
+}
+
+function bindClarity() {
+  if (!els.clarityScale) return;
+  bindClarityPair(els.clarityScale, els.clarityScaleNumber);
+  bindClarityPair(els.clarityQuality, els.clarityQualityNumber);
+  if (els.btnClarityPreview) {
+    els.btnClarityPreview.addEventListener("click", previewClarity);
+  }
+  if (els.btnClaritySave) {
+    els.btnClaritySave.addEventListener("click", saveClarity);
+  }
+}
+
 function bindActions() {
   els.btnRetry.addEventListener("click", () => {
     els.loadError.hidden = true;
@@ -1313,9 +1457,9 @@ function bindActions() {
     els.btnSpecimen.textContent = t("manage.specimen.busy", "渲染中…");
     const picked = [...state.specimenPicked];
     const payload = picked.length ? { families: picked } : {};
-    // 清晰度由渲染器的像素比等级决定：越高越清晰、图片也越大
-    const scale = els.specimenScale ? els.specimenScale.value : "";
-    if (scale) payload.scale = scale;
+    // 清晰度直接填像素倍数：档位不够用时能试 1.7、2.3 这种中间值
+    const scale = els.specimenScale ? Number(els.specimenScale.value) : NaN;
+    if (Number.isFinite(scale)) payload.device_scale_factor = scale;
     // 留空就用后端默认样句，方便只对比自己关心的字
     const text = els.specimenText ? els.specimenText.value.trim() : "";
     if (text) payload.text = text;
@@ -2254,10 +2398,12 @@ async function boot() {
   bindForms();
   bindGrids();
   bindActions();
+  bindClarity();
   bindT2i();
   bindT2iFontDialog();
   bindExternalLinks();
   await load();
+  await loadClaritySettings();
   const current = state.data && state.data.status && state.data.status.job;
   if (current && current.status === "running") {
     setBusy(true);

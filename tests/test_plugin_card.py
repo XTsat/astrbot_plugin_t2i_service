@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from t2i_plugin.card import build_status_card, build_test_card
+from t2i_plugin.card import build_clarity_sample, build_status_card, build_test_card
 
 # 断网可渲染 = 不加载任何外部资源（纯文本里出现地址没关系）
 EXTERNAL_MARKERS = ("<link", "<script", "@import", "src=", "url(http", 'href="http')
@@ -108,3 +108,18 @@ def test_status_card_escapes_injected_values():
         }
     )
     assert "<img src=x" not in html
+
+
+def test_test_card_shows_configured_render_note():
+    html = build_test_card(render_note="PNG · quality 60 · 2.5x · full_page=开")
+    assert "PNG · quality 60 · 2.5x · full_page=开" in html
+
+
+def test_clarity_sample_shows_parameters_and_is_self_contained():
+    html = build_clarity_sample(2.5, 80)
+    assert "2.5x" in html
+    assert "质量 80" in html
+    # 试拍样张同样不能依赖外链，断网也要能出图
+    lowered = html.lower()
+    for marker in EXTERNAL_MARKERS:
+        assert marker not in lowered, marker

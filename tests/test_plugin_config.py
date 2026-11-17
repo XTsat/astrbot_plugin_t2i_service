@@ -138,3 +138,36 @@ def test_removed_endpoint_enable_t2i_output_is_ignored():
     # 总开关改由 output.enabled 统一管理，旧字段不再参与解析
     config = T2IConfig.from_raw({"endpoint": {"enable_t2i_output": True}})
     assert not hasattr(config.endpoint, "enable_t2i_output")
+
+
+def test_device_scale_factor_defaults_and_coercion():
+    """输出清晰度：默认 2 倍，WebUI 字符串可用，越界与非法值要稳妥收敛。"""
+    assert T2IConfig.from_raw({}).render.device_scale_factor == 2.0
+    assert (
+        T2IConfig.from_raw({"render": {"device_scale_factor": "1.5"}})
+        .render.device_scale_factor
+        == 1.5
+    )
+    # 上下限：低于 1 只会更糊，高于 3 只会让图片白涨体积
+    assert (
+        T2IConfig.from_raw({"render": {"device_scale_factor": 9}})
+        .render.device_scale_factor
+        == 3.0
+    )
+    assert (
+        T2IConfig.from_raw({"render": {"device_scale_factor": "0.2"}})
+        .render.device_scale_factor
+        == 1.0
+    )
+    assert (
+        T2IConfig.from_raw({"render": {"device_scale_factor": "abc"}})
+        .render.device_scale_factor
+        == 2.0
+    )
+
+
+def test_quality_floor_is_bounded_and_defaults_to_70():
+    assert T2IConfig.from_raw({}).render.quality_floor == 70
+    assert T2IConfig.from_raw({"render": {"quality_floor": "0"}}).render.quality_floor == 0
+    assert T2IConfig.from_raw({"render": {"quality_floor": 200}}).render.quality_floor == 100
+    assert T2IConfig.from_raw({"render": {"quality_floor": -5}}).render.quality_floor == 0

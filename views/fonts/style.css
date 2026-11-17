@@ -1253,3 +1253,102 @@ button.pick[aria-pressed="true"] {
     width: 100%;
   }
 }
+
+/* ---------------------------------------------------------------- 出图清晰度 */
+
+/* 自检与清晰度栏里「标签 + 数字框 + 单位」并排，避免挤成两行 */
+.field-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.field-inline input[type="number"] {
+  width: 68px;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.field-inline input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.clarity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.field-block {
+  display: block;
+}
+
+.field-block > span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.field-row input[type="number"] {
+  width: 76px;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.field-row input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.field-inline .unit,
+.field-row .unit {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+#clarity-current {
+  margin: 10px 0 0;
+}
+
+#clarity-caption {
+  margin: 8px 0 0;
+}
+
+#clarity-box {
+  display: block;
+  margin-top: 10px;
+}
+
+#clarity-box img {
+  display: block;
+  max-width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-soft);
+}

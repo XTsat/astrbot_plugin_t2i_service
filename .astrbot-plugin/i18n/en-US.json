@@ -76,15 +76,13 @@
           "alt": "Font specimen",
           "pickerAria": "Families to compare",
           "caption": "Comparing {count} families: {list}",
-          "scaleAria": "Preview resolution",
-          "scaleNormal": "Standard",
-          "scaleHigh": "High",
-          "scaleUltra": "Ultra",
+          "scaleAria": "Preview sharpness (pixel multiplier)",
           "textPlaceholder": "Custom text to compare (empty = default sentence)",
           "weightAria": "Weight",
           "weightBoth": "Both",
           "weightRegular": "Regular",
-          "weightBold": "Bold"
+          "weightBold": "Bold",
+          "scaleLabel": "Sharpness"
         },
         "upload": {
           "action": "Upload font",
@@ -286,6 +284,23 @@
       "link": {
         "copied": "Link copied — you can open it in a new tab",
         "copyFailed": "Copy failed; please copy this address manually: {url}"
+      },
+      "clarity": {
+        "title": "Output sharpness",
+        "hint": "Type the numbers directly and press Save to apply them to every later render. Sharpness is the pixel multiplier: <code>1</code> matches the old look (small image, blurry when zoomed on a phone), <code>2</code> means twice the pixels. Quality is JPEG compression: lower means blurrier and smaller files.",
+        "scaleLabel": "Sharpness (pixel multiplier)",
+        "scaleAria": "Sharpness (pixel multiplier)",
+        "qualityLabel": "JPEG quality",
+        "qualityAria": "JPEG quality",
+        "preview": "Test shot",
+        "previewing": "Rendering…",
+        "save": "Save and apply",
+        "saving": "Saving…",
+        "alt": "Render sample",
+        "current": "In effect: sharpness {scale}x · quality floor {floor} · default quality {quality} · format {type}",
+        "caption": "This sample: sharpness {scale}x · quality {quality} · about {kb} KB (higher is crisper and larger)",
+        "saved": "Saved: sharpness {scale}x · quality floor {floor}; later renders use it right away",
+        "invalid": "Sharpness and quality must be numbers"
       }
     }
   }

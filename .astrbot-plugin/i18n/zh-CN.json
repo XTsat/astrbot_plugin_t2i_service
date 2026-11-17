@@ -76,15 +76,13 @@
           "alt": "字体预览",
           "pickerAria": "选择要对比的字体家族",
           "caption": "本次对比 {count} 个家族：{list}",
-          "scaleAria": "预览图清晰度",
-          "scaleNormal": "标准",
-          "scaleHigh": "高清",
-          "scaleUltra": "超清",
+          "scaleAria": "预览图清晰度（像素倍数）",
           "textPlaceholder": "自定义对比文字（留空用默认样句）",
           "weightAria": "字重",
           "weightBoth": "粗细",
           "weightRegular": "细体",
-          "weightBold": "粗体"
+          "weightBold": "粗体",
+          "scaleLabel": "清晰度"
         },
         "upload": {
           "action": "上传字体",
@@ -286,6 +284,23 @@
       "link": {
         "copied": "链接已复制，可以用新标签页打开",
         "copyFailed": "复制失败，请手动复制这个地址：{url}"
+      },
+      "clarity": {
+        "title": "出图清晰度",
+        "hint": "这里直接填数字，改完点「保存并生效」立即对后续出图生效。清晰度是渲染时的像素倍数：<code>1</code> 与旧版一致（图小、手机端放大后发糊），<code>2</code> 表示两倍像素。质量是 JPEG 压缩强度，越低越糊、图片也越小。",
+        "scaleLabel": "清晰度（像素倍数）",
+        "scaleAria": "清晰度（像素倍数）",
+        "qualityLabel": "JPEG 质量",
+        "qualityAria": "JPEG 质量",
+        "preview": "试拍样张",
+        "previewing": "试拍中…",
+        "save": "保存并生效",
+        "saving": "保存中…",
+        "alt": "出图样张",
+        "current": "当前生效：清晰度 {scale}x · 质量下限 {floor} · 默认质量 {quality} · 格式 {type}",
+        "caption": "本次样张：清晰度 {scale}x · 质量 {quality} · 约 {kb} KB（数值越大越清晰、文件也越大）",
+        "saved": "已保存：清晰度 {scale}x · 质量下限 {floor}，后续出图立即生效",
+        "invalid": "清晰度与质量都要填数字"
       }
     }
   }

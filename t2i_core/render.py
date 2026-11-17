@@ -32,13 +32,14 @@ try:  # playwright 未安装时仍然允许插件加载并提示用户安装
     from playwright.async_api import (
         Browser,
         BrowserContext,
+        Page,
         Playwright,
         async_playwright,
     )
 
     PLAYWRIGHT_AVAILABLE = True
 except ModuleNotFoundError:  # pragma: no cover - 取决于运行环境
-    Browser = BrowserContext = Playwright = object  # type: ignore[misc,assignment]
+    Browser = BrowserContext = Page = Playwright = object  # type: ignore[misc,assignment]
     async_playwright = None  # type: ignore[assignment]
 
     class TargetClosedError(Exception):  # type: ignore[no-redef]
@@ -91,6 +92,8 @@ class ScreenshotOptions(BaseModel):
             - normal: 1.0
             - high: 1.3
             - ultra: 1.8
+        device_scale_factor: (float, optional): 自定义设备像素比，优先于上面的档位.
+            1.0 表示与 CSS 像素一比一，越大出图越清晰、体积也越大。
 
     @author: Redlnn(https://github.com/GraiaCommunity/graiax-text2img-playwright)
     """
@@ -107,15 +110,65 @@ class ScreenshotOptions(BaseModel):
     viewport_width: int | None = None
     viewport_height: int | None = None
     device_scale_factor_level: Literal["normal", "high", "ultra", None] = None
+    device_scale_factor: float | None = None
+
+
+# Mapping from device_scale_factor_level to actual device_scale_factor
+SCALE_FACTOR_MAP = {
+    "normal": 1.0,
+    "high": 1.3,
+    "ultra": 1.8,
+}
+
+# 像素比的硬边界：低于 1.0 只会更糊，高于 4.0 会把整页截图放大到不可接受的体积
+MIN_DEVICE_SCALE_FACTOR = 1.0
+MAX_DEVICE_SCALE_FACTOR = 4.0
+
+# Chromium 的单张位图上限是 32767 像素（Skia 的 kMaxDimension），整页截图超过它
+# 会静默产出 0 字节文件而不是报错，所以按内容高度把像素比降下来
+MAX_CANVAS_PIXELS = 32000
+
+
+def resolve_scale(screenshot_options: ScreenshotOptions) -> tuple[str, float]:
+    """把截图参数换算成（上下文池键, 实际像素比）。
+
+    请求显式给了数字像素比时优先于档位；数值夹在硬边界内，避免一个手滑的
+    请求让整页截图变成几万像素宽。
+    """
+    raw = screenshot_options.device_scale_factor
+    if raw is not None:
+        try:
+            factor = float(raw)
+        except (TypeError, ValueError):
+            factor = MIN_DEVICE_SCALE_FACTOR
+        factor = min(MAX_DEVICE_SCALE_FACTOR, max(MIN_DEVICE_SCALE_FACTOR, factor))
+        # 先量化再当池键：键与上下文实际像素比必须完全一致，否则 2.004 与 2.006
+        # 会共用 2.00 的上下文却各自以为自己生效了
+        factor = round(factor, 2)
+        return f"{factor:.2f}", factor
+
+    level = screenshot_options.device_scale_factor_level or "normal"
+    return level, SCALE_FACTOR_MAP.get(level, 1.0)
+
+
+def fit_scale_to_height(height_px: int, factor: float) -> float:
+    """把像素比压到「内容高度 × 像素比 ≤ 位图上限」以内。
+
+    长回复（几千行）在 2 倍像素下会超过 Chromium 的单张位图上限，此时宁可降一点
+    清晰度也要出图；短页面不受影响。
+    """
+    if height_px <= 0:
+        return factor
+    allowed = MAX_CANVAS_PIXELS / height_px
+    if allowed >= factor:
+        return factor
+    # 向下取两位小数，确保压完仍在限制内
+    fitted = max(MIN_DEVICE_SCALE_FACTOR, int(allowed * 100) / 100)
+    return round(fitted, 2)
 
 
 class Text2ImgRender:
-    # Mapping from device_scale_factor_level to actual device_scale_factor
-    SCALE_FACTOR_MAP = {
-        "normal": 1.0,
-        "high": 1.3,
-        "ultra": 1.8,
-    }
+    SCALE_FACTOR_MAP = SCALE_FACTOR_MAP
 
     def __init__(
         self,
@@ -172,12 +225,14 @@ class Text2ImgRender:
             options["executable_path"] = self.executable_path
         return options
 
-    async def _ensure_context(self, level: str = "normal") -> BrowserContext:
+    async def _ensure_context(
+        self, level: str = "normal", scale_factor: float | None = None
+    ) -> BrowserContext:
         """Ensure that Playwright, Browser and BrowserContext are initialized.
 
         Args:
-            level: Device scale factor level ("normal", "high", or "ultra").
-                   Defaults to "normal" if not specified.
+            level: 上下文池的键：像素比档位名（"normal"/"high"/"ultra"）或数字像素比.
+            scale_factor: 该上下文实际使用的 device_scale_factor；不传时按档位查表.
 
         Returns:
             The BrowserContext for the specified level.
@@ -213,12 +268,16 @@ class Text2ImgRender:
 
         # ensure context available for the specified level
         if level not in self.contexts:
-            scale_factor = self.SCALE_FACTOR_MAP.get(level, 1.0)
+            factor = (
+                scale_factor
+                if scale_factor is not None
+                else SCALE_FACTOR_MAP.get(level, MIN_DEVICE_SCALE_FACTOR)
+            )
             self.contexts[level] = await self.browser.new_context(
-                device_scale_factor=scale_factor,
+                device_scale_factor=factor,
             )
             logger.info(
-                f"Created context for level '{level}' with device_scale_factor={scale_factor}"
+                f"Created context for level '{level}' with device_scale_factor={factor}"
             )
             BROWSER_CONTEXTS.set(len(self.contexts))
 
@@ -343,18 +402,36 @@ class Text2ImgRender:
             self._last_used = time.monotonic()
             return result
 
+    @staticmethod
+    async def _content_height(page: Page) -> int:
+        """整页截图的内容高度（CSS 像素）；读不到时按 0 处理（不降级）。"""
+        try:
+            height = await page.evaluate(
+                "() => Math.ceil(Math.max("
+                "document.documentElement.scrollHeight,"
+                "document.body ? document.body.scrollHeight : 0))"
+            )
+        except Exception as exc:  # noqa: BLE001 - 量高度失败不该让截图失败
+            logger.debug(f"html2pic: measure content height failed: {exc}")
+            return 0
+        try:
+            return int(height)
+        except (TypeError, ValueError):
+            return 0
+
     async def _screenshot(
         self, html_file_path: str, screenshot_options: ScreenshotOptions
     ) -> str:
-        # Determine which context to use based on device_scale_factor_level
-        level = screenshot_options.device_scale_factor_level or "normal"
+        # 数字像素比优先于档位；池键同时用于指标标签，便于对照「哪档在慢」
+        level, scale_factor = resolve_scale(screenshot_options)
         suffix = screenshot_options.type if screenshot_options.type else "png"
         started = time.perf_counter()
         result = "error"
         page = None
+        content_height = 0
         RENDER_IN_PROGRESS.inc()
         try:
-            context = await self._ensure_context(level)
+            context = await self._ensure_context(level, scale_factor)
             result_path, _ = generate_data_path(
                 suffix=suffix, namespace="rendered", data_dir=self.data_dir
             )
@@ -374,7 +451,7 @@ class Text2ImgRender:
                         pass
                     del self.contexts[level]
                     BROWSER_CONTEXTS.set(len(self.contexts))
-                context = await self._ensure_context(level)
+                context = await self._ensure_context(level, scale_factor)
                 page = await context.new_page()
             RENDER_ACTIVE_PAGES.inc()
 
@@ -384,7 +461,6 @@ class Text2ImgRender:
 
             width = viewport_width if viewport_width is not None else 800
             height = viewport_height if viewport_height is not None else 720
-            scale_factor = self.SCALE_FACTOR_MAP.get(level, 1.0)
             RENDER_VIEWPORT_PIXELS.labels(scale=level).observe(
                 width * height * scale_factor * scale_factor
             )
@@ -396,10 +472,35 @@ class Text2ImgRender:
                 await page.goto(
                     f"file://{html_file_path}", timeout=screenshot_options.timeout
                 )
+                # 整页截图时按内容高度再压一次像素比：超长页面在 2 倍像素下会突破
+                # Chromium 的单张位图上限，Playwright 不报错、只留下 0 字节文件。
+                # 只截视口时高度固定，不需要这一步
+                full_page = screenshot_options.full_page is not False
+                if full_page:
+                    content_height = await self._content_height(page)
+                fitted = fit_scale_to_height(content_height, scale_factor)
+                if fitted < scale_factor:
+                    logger.info(
+                        f"html2pic: 内容高 {content_height}px，像素比 {scale_factor} → {fitted}"
+                    )
+                    await page.close()
+                    page = None
+                    RENDER_ACTIVE_PAGES.dec()
+                    level = f"{fitted:.2f}"
+                    scale_factor = fitted
+                    context = await self._ensure_context(level, scale_factor)
+                    page = await context.new_page()
+                    RENDER_ACTIVE_PAGES.inc()
+                    await page.set_viewport_size({"width": width, "height": height})
+                    await page.goto(
+                        f"file://{html_file_path}", timeout=screenshot_options.timeout
+                    )
+
                 screenshot_kwargs = screenshot_options.model_dump(exclude_none=True)
                 screenshot_kwargs.pop("viewport_width", None)
                 screenshot_kwargs.pop("viewport_height", None)
                 screenshot_kwargs.pop("device_scale_factor_level", None)
+                screenshot_kwargs.pop("device_scale_factor", None)
 
                 # Robustness: Remove quality if type is png, as Playwright errors out
                 if screenshot_options.type == "png":
@@ -412,9 +513,13 @@ class Text2ImgRender:
                 page = None
                 RENDER_ACTIVE_PAGES.dec()
 
-            RENDER_OUTPUT_BYTES.labels(format=suffix).observe(
-                os.path.getsize(result_path)
-            )
+            size = os.path.getsize(result_path)
+            if size <= 0:
+                # Playwright 在位图超限时留下空文件却不抛错，这里必须自己判失败
+                raise RuntimeError(
+                    f"截图输出为空（{suffix}，内容高 {content_height}px，像素比 {scale_factor}）"
+                )
+            RENDER_OUTPUT_BYTES.labels(format=suffix).observe(size)
             result = "success"
             logger.info(f"Rendered {html_file_path} to {result_path}")
             return result_path

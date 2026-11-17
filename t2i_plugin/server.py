@@ -32,7 +32,12 @@ from t2i_core.metrics import (
     RENDER_INPUT_BYTES,
     RENDER_REQUESTS,
 )
-from t2i_core.render import PlaywrightNotInstalledError, ScreenshotOptions, Text2ImgRender
+from t2i_core.render import (
+    PlaywrightNotInstalledError,
+    ScreenshotOptions,
+    Text2ImgRender,
+    resolve_scale,
+)
 from t2i_core.storage import LocalImageStorage
 from t2i_core.util import generate_data_path
 
@@ -370,8 +375,21 @@ class T2IHttpServer:
             type=render_cfg.default_type,  # type: ignore[arg-type]
             quality=render_cfg.default_quality or None,
             full_page=render_cfg.full_page,
+            device_scale_factor=render_cfg.device_scale_factor,
         ).model_dump()
-        base.update(raw_options or {})
+        request_options = dict(raw_options or {})
+        # AstrBot 会自带 type/quality 但从不带清晰度；请求只要显式指定了档位或
+        # 数字像素比，就整体让请求决定，别让配置里的数字把请求的档位顶掉
+        if "device_scale_factor_level" in request_options:
+            base["device_scale_factor"] = None
+        base.update(request_options)
+        # AstrBot 固定发 quality=40，2 倍像素下压缩痕迹肉眼可见；只抬下限，
+        # 请求要更高的质量照旧，配置为 0 时完全不干预
+        floor = render_cfg.quality_floor
+        if floor > 0 and base.get("type") != "png":
+            current = base.get("quality")
+            if not isinstance(current, int) or current < floor:
+                base["quality"] = floor
         return ScreenshotOptions(**base)
 
     # ------------------------------------------------------------- 处理函数
@@ -510,25 +528,44 @@ class T2IHttpServer:
     # ------------------------------------------------------------- 测试渲染
 
     async def render_probe(
-        self, html: str, width: int | None = None, scale: str = "normal"
+        self,
+        html: str,
+        width: int | None = None,
+        scale: str | None = None,
+        *,
+        factor: float | None = None,
+        quality: int | None = None,
     ) -> tuple[bool, str]:
-        """同步渲染一段 HTML，用于 /t2i_test 与状态页自检。
+        """同步渲染一段 HTML，用于 /t2i_test、状态页自检与面板试拍。
 
-        ``width`` 覆盖视口宽度（不传走渲染器默认值），``scale`` 选像素比等级
-        （normal / high / ultra），用于让页面按需换取更清晰的预览图。
+        ``width`` 覆盖视口宽度（不传走渲染器默认值）；``scale`` 选像素比档位
+        （normal / high / ultra）；``factor`` 直接指定像素比，``quality`` 指定
+        JPEG 质量（此时输出 jpeg，用来直观看出压缩痕迹）。不传清晰度参数时用
+        配置里的值，让自检图与真实出图保持同一分辨率。
         """
         try:
-            _, abs_path = await self.renderer.from_html(html)
-            picture = await self.renderer.html2pic(
-                abs_path,
-                ScreenshotOptions(
-                    type="png",
-                    full_page=True,
-                    viewport_width=width,
-                    device_scale_factor_level=scale,
-                ),
+            if factor is not None:
+                level, use_factor = None, factor
+            elif scale:
+                level, use_factor = scale, None
+            else:
+                level, use_factor = None, self.config.render.device_scale_factor
+            # 指定质量时必须是 jpeg：png 会丢掉质量参数，看不出压缩差异
+            shot_type = "jpeg" if quality is not None else "png"
+            options = ScreenshotOptions(
+                type=shot_type,
+                quality=quality,
+                full_page=True,
+                viewport_width=width,
+                device_scale_factor_level=level,
+                device_scale_factor=use_factor,
             )
-            RENDER_REQUESTS.labels(result="success", format="png", scale=scale).inc()
+            _, abs_path = await self.renderer.from_html(html)
+            picture = await self.renderer.html2pic(abs_path, options)
+            label, _ = resolve_scale(options)
+            RENDER_REQUESTS.labels(
+                result="success", format=shot_type, scale=label
+            ).inc()
             return True, picture
         except PlaywrightNotInstalledError as exc:
             return False, str(exc)

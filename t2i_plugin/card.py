@@ -97,6 +97,7 @@ def build_test_card(
     chromium_installed: bool = False,
     chromium_path: str = "",
     renderer_connected: bool = False,
+    render_note: str = "",
 ) -> str:
     """构造测试卡片；quiet=True 用于插件启动时预热（内容更精简）。"""
     healthy = server_running and chromium_installed
@@ -130,7 +131,7 @@ def build_test_card(
     <tr><td class="k">浏览器连接</td><td class="v">
       {_pill(renderer_connected, "已连接（复用在跑）", "空闲（首次渲染时启动）")}
     </td></tr>
-    <tr><td class="k">默认输出</td><td class="v">JPEG · quality 40 · full_page</td></tr>
+    <tr><td class="k">默认输出</td><td class="v">{_esc(render_note or "JPEG · quality 40 · full_page")}</td></tr>
     <tr><td class="k">渲染时间</td><td class="v mono">{_esc(_now())}</td></tr>
   </table>
   <div class="swatch">
@@ -222,6 +223,10 @@ def build_status_card(payload: dict) -> str:
             _pill(connected, "已连接（复用）", "空闲（首次渲染启动）"),
         ),
         row(
+            "输出清晰度",
+            f"{_esc(renderer.get('device_scale_factor', 2))}x（设备像素比）",
+        ),
+        row(
             "安装任务",
             f'{_esc(install.get("status", "unknown"))} · {_esc(install.get("message", ""))}',
         ),
@@ -289,6 +294,57 @@ FONT_SPECIMEN_WIDTH = 720
 def _css_family(name: str) -> str:
     """把家族名放进单引号 CSS 字符串：引号与反斜杠会破坏样式，先剔掉。"""
     return name.replace("'", "").replace("\\", "").replace('"', "")
+
+
+_CLARITY_SAMPLE_STYLE = """
+  .meta { color: #9fb2d4; font-size: 12.5px; margin: 4px 0 14px; }
+  .body-text { font-size: 15px; line-height: 1.9; color: #eaf1ff; margin: 0 0 12px; }
+  .body-small { font-size: 12.5px; line-height: 1.8; color: #9fb2d4; margin: 0 0 12px; }
+  .ruler { display: flex; align-items: flex-end; gap: 0; margin: 14px 0 4px; }
+  .ruler i { display: block; width: 1px; height: 8px; background: rgba(150, 180, 230, 0.45); }
+  .ruler i.tall { height: 14px; background: rgba(150, 180, 230, 0.8); }
+  .ruler-note { color: #8fa3c6; font-size: 11.5px; }
+  .swatch { display: flex; gap: 4px; margin-top: 12px; }
+  .swatch i { height: 10px; border-radius: 2px; flex: 1; }
+"""
+
+
+def build_clarity_sample(factor: float, quality: int) -> str:
+    """构造出图清晰度的试拍样张。
+
+    样张同时放正文、小号灰字、细线与渐变色块：这四类最能看出「放大后糊不糊」
+    和「JPEG 压缩痕迹重不重」。标题里写明本次参数，方便并排对比两次试拍。
+    """
+    body = f"""
+<div class="card">
+  <div class="head">
+    <span class="dot ok"></span>
+    <h1>出图清晰度试拍</h1>
+  </div>
+  <div class="meta">清晰度 {factor:g}x · JPEG 质量 {quality} · {_esc(_now())}</div>
+  <p class="body-text">
+    这一行是正文字号的中文示例：AstrBot 会把较长的回复渲染成图片，文字边缘是否
+    干净、笔画之间是否粘在一起，在手机端放大后差别很明显。含英文 AstrBot T2I 与
+    数字 0123456789，以及标点：，。！？「」
+  </p>
+  <p class="body-small">
+    这一行是小号灰色辅助文字，最容易暴露压缩痕迹：小字周围若出现块状色斑，说明
+    JPEG 质量偏低；边缘发虚则说明像素比不够。
+  </p>
+  <div class="ruler">
+    <i class="tall"></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i>
+    <i class="tall"></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i>
+    <i class="tall"></i><i></i><i></i><i></i><i class="tall"></i><i></i><i></i><i></i>
+  </div>
+  <div class="ruler-note">上面是 1px 细刻度线：糊掉的图上它们会连成一片灰条。</div>
+  <div class="swatch">
+    <i style="background:#38d39f"></i><i style="background:#5aa9ff"></i>
+    <i style="background:#ffc857"></i><i style="background:#ff6b6b"></i>
+    <i style="background:#b18cff"></i>
+  </div>
+</div>
+<style>{_CLARITY_SAMPLE_STYLE}</style>"""
+    return _document("出图清晰度试拍", body)
 
 
 def build_font_specimen(

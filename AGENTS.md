@@ -108,6 +108,7 @@ service/main.py ─────────────────────�
 | 卡片用的 HTML 片段 | `t2i_plugin/card.py` |
 | 字体下载/上传/fontconfig 供给 | `t2i_plugin/fonts.py` |
 | 面板的字体 Web API | `t2i_plugin/font_web.py` |
+| 面板的出图清晰度 Web API（读写清晰度/质量、试拍样张） | `t2i_plugin/render_web.py` |
 | 面板的模板 Web API | `t2i_plugin/template_web.py` |
 | 转图模板清单 / 新建编辑删除 / 应用 / 预览缓存 | `t2i_plugin/templates.py`（用户目录、插件自带目录与内置目录三处模板合并、新建与保存用户模板、显示名与删除、槽位模板写入、预览图缓存） |
 | 随插件发布的转图模板 | `t2i_plugin/plugin_templates/*.html` + `plugin_templates/assets/`（文件名即模板名，面板来源显示为「插件」；模板里按 `assets/文件名` 引用图片，读模板时内联成 data URI；同名的以用户副本为准，其次以插件自带为准） |
@@ -290,7 +291,7 @@ class T2IServicePlugin(Star):
 | 段 | 关键项 | 说明 |
 |---|---|---|
 | `server` | `enabled`、`host`、`port`、`auth_token`、`fallback_enabled`、`fallback_endpoint` | 内嵌 HTTP 服务 |
-| `render` | `concurrency`、`no_sandbox`、`idle_timeout_seconds`、`prelaunch`、`default_type`、`default_quality`、`full_page` | 渲染行为 |
+| `render` | `concurrency`、`no_sandbox`、`idle_timeout_seconds`、`prelaunch`、`default_type`、`default_quality`、`quality_floor`、`device_scale_factor`、`full_page` | 渲染行为 |
 | `browser` | `browsers_path`、`download_host`、`executable_path`、`auto_install_deps`、`cleanup_orphans`、`install_timeout_seconds` | 浏览器供给 |
 | `endpoint` | `auto_configure`、`service_url`、`current_service_url`（展示用，插件回写） | 是否写 AstrBot 主配置 |
 | `output` | `enabled`、`word_threshold`、`copy_extra`、`copy_kinds`、`core_synced`（回写标记，隐藏） | AstrBot 文转图输出：什么时候转图、可复制内容识别哪几类、怎么补发 |

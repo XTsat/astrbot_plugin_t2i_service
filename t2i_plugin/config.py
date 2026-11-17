@@ -18,6 +18,20 @@ DEFAULT_FALLBACK_ENDPOINT = "https://t2i.rcfortress.site/text2img"
 DEFAULT_DOWNLOAD_HOST = "https://cdn.npmmirror.com/binaries/playwright"
 DEFAULT_PORT = 8999
 
+# 输出清晰度：渲染时的设备像素比。1.0 是浏览器 CSS 像素一比一（旧默认，手机端
+# 放大后发糊），2.0 表示两倍像素；再高只会让图片体积与渲染耗时白涨。
+DEFAULT_DEVICE_SCALE_FACTOR = 2.0
+MIN_DEVICE_SCALE_FACTOR = 1.0
+MAX_DEVICE_SCALE_FACTOR = 3.0
+
+# JPEG 质量下限：AstrBot 每次请求都固定发 quality=40，2 倍像素下这个质量能看出
+# 明显压缩痕迹。0 表示不干预请求里的质量。
+DEFAULT_QUALITY_FLOOR = 70
+
+# JPEG 质量的取值范围（0–100），面板与配置页共用同一套边界
+MIN_QUALITY = 0
+MAX_QUALITY = 100
+
 # AstrBot 自己的默认值（t2i_word_threshold=150，且运行时会把阈值夹到 ≥50），
 # 插件这边保持一致，避免同一份设置在两处显示不同数字。
 DEFAULT_WORD_THRESHOLD = 150
@@ -60,6 +74,24 @@ def _as_int(value: Any, default: int) -> int:
         return int(str(value).strip())
     except (TypeError, ValueError):
         return default
+
+
+def _as_float(value: Any, default: float) -> float:
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def clamp_device_scale_factor(value: Any) -> float:
+    """归一化渲染清晰度：非法值回落默认，超出范围夹到上下限。"""
+    factor = _as_float(value, DEFAULT_DEVICE_SCALE_FACTOR)
+    return min(MAX_DEVICE_SCALE_FACTOR, max(MIN_DEVICE_SCALE_FACTOR, factor))
+
+
+def clamp_quality(value: Any, default: int = DEFAULT_QUALITY_FLOOR) -> int:
+    """归一化 JPEG 质量：非法值回落默认，超出 0–100 夹到边界。"""
+    return min(MAX_QUALITY, max(MIN_QUALITY, _as_int(value, default)))
 
 
 def _as_str(value: Any, default: str = "") -> str:
@@ -128,6 +160,10 @@ class RenderConfig:
     prelaunch: bool = False
     default_type: str = "jpeg"
     default_quality: int = 40
+    # 请求里的 JPEG 质量低于该值时抬到该值；0 = 不干预
+    quality_floor: int = DEFAULT_QUALITY_FLOOR
+    # 输出图的设备像素比：请求显式带清晰度参数时以请求为准
+    device_scale_factor: float = DEFAULT_DEVICE_SCALE_FACTOR
     full_page: bool = True
 
 
@@ -240,6 +276,12 @@ class T2IConfig:
             prelaunch=_as_bool(render_raw.get("prelaunch"), False),
             default_type=_as_str(render_raw.get("default_type"), "jpeg") or "jpeg",
             default_quality=_as_int(render_raw.get("default_quality"), 40),
+            quality_floor=clamp_quality(
+                render_raw.get("quality_floor"), DEFAULT_QUALITY_FLOOR
+            ),
+            device_scale_factor=clamp_device_scale_factor(
+                render_raw.get("device_scale_factor")
+            ),
             full_page=_as_bool(render_raw.get("full_page"), True),
         )
 

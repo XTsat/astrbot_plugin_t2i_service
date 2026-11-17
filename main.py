@@ -70,12 +70,17 @@ from t2i_plugin.browser import (  # noqa: E402
 )
 from t2i_plugin.card import (  # noqa: E402
     FONT_SPECIMEN_WIDTH,
+    build_clarity_sample,
     build_font_specimen,
     build_test_card,
 )
 from t2i_plugin.config import (  # noqa: E402
     COPY_EXTRA_LABELS,
     DEFAULT_FALLBACK_ENDPOINT,
+    MAX_DEVICE_SCALE_FACTOR,
+    MAX_QUALITY,
+    MIN_DEVICE_SCALE_FACTOR,
+    MIN_QUALITY,
     T2IConfig,
     coerce_word_threshold,
     format_copy_kinds_note,
@@ -94,6 +99,7 @@ from t2i_plugin.fonts import (  # noqa: E402
     FONT_TEMPLATES,
     FontManager,
 )
+from t2i_plugin.render_web import RenderWebApi  # noqa: E402
 from t2i_plugin.server import T2IHttpServer  # noqa: E402
 from t2i_plugin.template_web import TemplateWebApi  # noqa: E402
 from t2i_plugin.templates import (  # noqa: E402
@@ -192,6 +198,15 @@ class T2IServicePlugin(Star):
         # 在 __init__ 里注册：AstrBot 收集的是插件实例注册过的路由，
         # 视图页面在插件卡片打开时才会被发现，两者都早于 initialize() 的执行时机。
         self.font_web.register(context)
+
+        # 出图清晰度：页面里直接填数字并试拍，比只给几档预设更容易调到满意
+        self.render_web = RenderWebApi(
+            PLUGIN_NAME,
+            state=self._render_settings_state,
+            save=self._save_render_settings,
+            preview=self._render_clarity_preview,
+        )
+        self.render_web.register(context)
 
         # 模板供给：模板文件仍归 AstrBot 的模板目录管，插件只把选中的那套内容写进
         # 自己的槽位，并把 AstrBot 的「当前模板」指向槽位（详见 t2i_plugin/templates.py）。
@@ -581,12 +596,81 @@ class T2IServicePlugin(Star):
         scale: str = "normal",
         text: str = "",
         weights: str = "both",
+        factor: float | None = None,
     ) -> tuple[bool, str]:
-        """渲染字体预览卡片，返回（是否成功, 图片路径或错误信息）。"""
+        """渲染字体预览卡片，返回（是否成功, 图片路径或错误信息）。
+
+        ``factor`` 是页面直接填的像素倍数，给了就以它为准（档位不够用时能试
+        1.7、2.3 这种中间值）；没给则用 ``scale`` 档位。
+        """
         return await self.server.render_probe(
             build_font_specimen(families, text, weights),
             width=FONT_SPECIMEN_WIDTH,
-            scale=scale,
+            scale=None if factor else scale,
+            factor=factor,
+        )
+
+    # ------------------------------------------------------------ 出图清晰度
+
+    def _render_settings_state(self) -> dict[str, object]:
+        """面板「出图清晰度」栏要显示的当前值与可调范围。"""
+        render = self.settings.render
+        return {
+            "default_type": render.default_type,
+            "default_quality": render.default_quality,
+            "quality_floor": render.quality_floor,
+            "device_scale_factor": render.device_scale_factor,
+            "full_page": render.full_page,
+            "effective_quality": self._effective_quality(),
+            "ranges": {
+                "device_scale_factor": {
+                    "min": MIN_DEVICE_SCALE_FACTOR,
+                    "max": MAX_DEVICE_SCALE_FACTOR,
+                    "step": 0.1,
+                },
+                "quality": {"min": MIN_QUALITY, "max": MAX_QUALITY, "step": 1},
+            },
+        }
+
+    async def _save_render_settings(
+        self, factor: float, quality_floor: int, default_quality: int
+    ) -> dict[str, object]:
+        """把清晰度与质量写回插件配置，并立即对后续出图生效。
+
+        改完要让 ``self.settings`` 与 HTTP 服务手里的那份配置一起更新，否则要等
+        重启才生效；服务只读这几个字段，原地改最省事。
+        """
+        render = self.settings.render
+        render.device_scale_factor = factor
+        render.quality_floor = quality_floor
+        render.default_quality = default_quality
+        server_render = self.server.config.render
+        server_render.device_scale_factor = factor
+        server_render.quality_floor = quality_floor
+        server_render.default_quality = default_quality
+        await self._update_plugin_config(
+            {
+                "render": {
+                    "device_scale_factor": factor,
+                    "quality_floor": quality_floor,
+                    "default_quality": default_quality,
+                }
+            }
+        )
+        logger.info(
+            f"[t2i] 出图参数已更新：{factor:g}x · 质量下限 {quality_floor}"
+            f" · 默认质量 {default_quality}"
+        )
+        return self._render_settings_state()
+
+    async def _render_clarity_preview(
+        self, factor: float, quality: int
+    ) -> tuple[bool, str]:
+        """按给定参数试拍一张样张，供面板直观比较不同清晰度与质量。"""
+        return await self.server.render_probe(
+            build_clarity_sample(factor, quality),
+            factor=factor,
+            quality=quality,
         )
 
     def _installed_family_names(self) -> list[str]:
@@ -789,6 +873,7 @@ class T2IServicePlugin(Star):
                 "connected": self.renderer.is_browser_connected(),
                 "concurrency": self.settings.render.concurrency,
                 "idle_timeout": self.settings.render.idle_timeout_seconds,
+                "device_scale_factor": self.settings.render.device_scale_factor,
             },
             "endpoint": {
                 "auto_configure": self.settings.endpoint.auto_configure,
@@ -820,6 +905,22 @@ class T2IServicePlugin(Star):
                 "active_template": self._read_core_config("t2i_active_template"),
             },
         }
+
+    def _effective_quality(self) -> int:
+        """请求里实际会用的 JPEG 质量：质量下限会抬高低质量的请求。"""
+        render = self.settings.render
+        if render.quality_floor <= 0:
+            return render.default_quality
+        return max(render.default_quality, render.quality_floor)
+
+    def _render_output_note(self) -> str:
+        """自检卡片上展示实际生效的输出参数，别让用户对着硬编码文案猜。"""
+        render = self.settings.render
+        return (
+            f"{render.default_type.upper()} · quality {self._effective_quality()}"
+            f" · {render.device_scale_factor:g}x"
+            f" · full_page={'开' if render.full_page else '关'}"
+        )
 
     def _read_core_config(self, key: str) -> str:
         try:
@@ -862,6 +963,8 @@ class T2IServicePlugin(Star):
             f"系统依赖：{deps}",
             f"浏览器进程：{browser['processes']} 个，占用 {browser['process_memory_mb']} MB",
             f"浏览器连接：{'已连接' if renderer['connected'] else '空闲/未启动'}",
+            f"输出参数：{self._render_output_note()}"
+            f"（清晰度与质量越大越清楚，图片也越大）",
             f"插件浏览器目录：{browser['browsers_path']}",
             f"安装任务：{browser['install']['status']} - {browser['install']['message']}",
             f"渲染字体：{fonts['families']} 个家族 / {fonts['files']} 个文件"
@@ -1047,6 +1150,7 @@ class T2IServicePlugin(Star):
             chromium_installed=payload["browser"]["installed"],
             chromium_path=payload["browser"]["chromium_path"],
             renderer_connected=payload["renderer"]["connected"],
+            render_note=self._render_output_note(),
         )
         started = time.perf_counter()
         ok, detail = await self.server.render_probe(html)
