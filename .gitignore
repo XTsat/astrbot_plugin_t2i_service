@@ -165,3 +165,4 @@ data/
 
 # 本地 harness / 工具产物
 .dsh-vision-router/
+.runs/

@@ -1,11 +1,12 @@
-import time
-import os
-import uuid
 import glob
+import os
+import time
+import uuid
+from typing import Optional
+
 from .logger import get_logger as _get_logger
 
 logger = _get_logger()
-from typing import Optional
 
 
 def get_image_lifetime() -> int:

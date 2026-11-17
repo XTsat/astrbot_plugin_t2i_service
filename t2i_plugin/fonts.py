@@ -489,7 +489,6 @@ def _parse_name_table(raw: bytes) -> list[str]:
     strings = _u16(raw, 4)
     typographic: list[str] = []
     legacy: list[str] = []
-    names = legacy
     for index in range(count):
         record = 6 + index * 12
         if record + 12 > len(raw):

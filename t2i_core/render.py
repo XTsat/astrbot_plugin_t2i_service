@@ -4,14 +4,28 @@ import asyncio
 import os
 import re
 import time
+from typing import Literal
 
 from jinja2.sandbox import SandboxedEnvironment
+from pydantic import BaseModel
+from typing_extensions import TypedDict
+
 from .logger import get_logger as _get_logger
+from .metrics import (
+    BROWSER_CONNECTED,
+    BROWSER_CONTEXTS,
+    BROWSER_RESTARTS,
+    BROWSER_STARTS,
+    RENDER_ACTIVE_PAGES,
+    RENDER_DURATION,
+    RENDER_IN_PROGRESS,
+    RENDER_OUTPUT_BYTES,
+    RENDER_REQUESTS,
+    RENDER_VIEWPORT_PIXELS,
+)
+from .util import generate_data_path
 
 logger = _get_logger()
-from pydantic import BaseModel
-from typing import Literal
-from typing_extensions import TypedDict
 
 try:  # playwright 未安装时仍然允许插件加载并提示用户安装
     from playwright._impl._errors import TargetClosedError
@@ -35,21 +49,6 @@ except ModuleNotFoundError:  # pragma: no cover - 取决于运行环境
 
 class PlaywrightNotInstalledError(RuntimeError):
     """Python 包 playwright 或 Chromium 浏览器不可用。"""
-
-
-from .metrics import (
-    BROWSER_CONNECTED,
-    BROWSER_CONTEXTS,
-    BROWSER_RESTARTS,
-    BROWSER_STARTS,
-    RENDER_ACTIVE_PAGES,
-    RENDER_DURATION,
-    RENDER_IN_PROGRESS,
-    RENDER_OUTPUT_BYTES,
-    RENDER_REQUESTS,
-    RENDER_VIEWPORT_PIXELS,
-)
-from .util import generate_data_path
 
 
 class FloatRect(TypedDict):

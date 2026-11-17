@@ -8,12 +8,10 @@ import fastapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from jinja2.exceptions import SecurityError
-from .logger import get_logger as _get_logger
-
-logger = _get_logger()
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel
 
+from .logger import get_logger as _get_logger
 from .metrics import (
     CLEANUP_DURATION,
     CLEANUP_FILES,
@@ -30,6 +28,8 @@ from .metrics import (
 from .render import ScreenshotOptions, Text2ImgRender
 from .storage import create_image_storage
 from .util import cleanup_expired_files
+
+logger = _get_logger()
 
 app = fastapi.FastAPI()
 app.add_middleware(
