@@ -233,8 +233,14 @@
           "jpeg",
           "png"
         ],
-        "hint": "请求里带 options.type 时以请求为准；jpeg 体积更小，png 更清晰。",
+        "hint": "请求里带 options.type 时以请求为准——但 AstrBot 每次出图都固定发 jpeg，所以想让这里选的 png 真正生效，要同时打开下面的「强制按配置格式出图」。jpeg 体积更小，png 无损但明显更大。",
         "default": "jpeg"
+      },
+      "force_type": {
+        "description": "强制按配置格式出图",
+        "type": "bool",
+        "hint": "AstrBot 每次出图都固定发 type=jpeg，不打开这项时上面选的格式只在请求没带格式时生效。打开后以这里的格式为准，请求只决定质量。",
+        "default": false
       },
       "default_quality": {
         "description": "JPEG 默认质量",

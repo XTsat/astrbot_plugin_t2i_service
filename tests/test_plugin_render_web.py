@@ -1,4 +1,4 @@
-"""面板「出图清晰度」接口：读当前值、保存并立即生效、试拍样张。"""
+"""面板「出图清晰度」接口：读当前值、保存并立即生效、测试出图。"""
 
 from __future__ import annotations
 
@@ -82,16 +82,18 @@ def test_quality_and_scale_are_clamped_to_ranges():
 
 
 async def test_save_only_touches_given_fields(monkeypatch):
-    """只传清晰度时，质量下限要沿用当前值，不能被重置成默认。"""
+    """只传清晰度时，其余字段要沿用当前值，不能被重置成默认。"""
     monkeypatch.setattr(render_web, "request", _FakeRequest({"device_scale_factor": 2.5}))
-    saved: list[tuple[float, int, int]] = []
+    saved: list[tuple] = []
 
-    async def fake_save(factor, quality_floor, default_quality):
-        saved.append((factor, quality_floor, default_quality))
+    async def fake_save(factor, quality_floor, default_quality, default_type, full_page):
+        saved.append((factor, quality_floor, default_quality, default_type, full_page))
         return {
             "device_scale_factor": factor,
             "quality_floor": quality_floor,
             "default_quality": default_quality,
+            "default_type": default_type,
+            "full_page": full_page,
         }
 
     api = RenderWebApi(
@@ -100,36 +102,108 @@ async def test_save_only_touches_given_fields(monkeypatch):
             "device_scale_factor": 2.0,
             "quality_floor": 85,
             "default_quality": 55,
-            "default_type": "jpeg",
+            "default_type": "png",
+            "full_page": False,
         },
         save=fake_save,
-        preview=lambda *args: None,  # type: ignore[arg-type]
+        preview=lambda *args, **kwargs: None,  # type: ignore[arg-type]
     )
     payload = _payload(await api.page_save())
     assert payload["device_scale_factor"] == 2.5
-    assert saved == [(2.5, 85, 55)]
+    # 格式与整页开关没传，要保持原值而不是被默认值覆盖
+    assert saved == [(2.5, 85, 55, "png", False)]
 
 
-async def test_preview_returns_data_url_and_size(monkeypatch, tmp_path):
-    image = tmp_path / "shot.jpg"
-    image.write_bytes(b"\xff\xd8\xff\xd9")
+async def test_save_writes_format_and_full_page(monkeypatch):
+    """格式与整页开关都要能存下来：AstrBot 固定发 jpeg，格式只能靠面板改。"""
     monkeypatch.setattr(
-        render_web, "request", _FakeRequest({"device_scale_factor": 1.5, "quality": 60})
+        render_web,
+        "request",
+        _FakeRequest({"default_type": "PNG", "full_page": False}),
     )
-    calls: list[tuple[float, int]] = []
+    saved: list[tuple] = []
 
-    async def fake_preview(factor, quality):
-        calls.append((factor, quality))
+    async def fake_save(factor, quality_floor, default_quality, default_type, full_page):
+        saved.append((default_type, full_page))
+        return {"default_type": default_type, "full_page": full_page}
+
+    api = RenderWebApi(
+        "astrbot_plugin_t2i_service",
+        state=lambda: {
+            "device_scale_factor": 2.0,
+            "quality_floor": 70,
+            "default_quality": 70,
+            "default_type": "jpeg",
+            "full_page": True,
+        },
+        save=fake_save,
+        preview=lambda *args, **kwargs: None,  # type: ignore[arg-type]
+    )
+    _payload(await api.page_save())
+    # 大小写要归一化，别把 "PNG" 直接写进配置
+    assert saved == [("png", False)]
+
+
+def _png_bytes(width: int, height: int) -> bytes:
+    """最小合法 PNG 头：只要 IHDR 里的宽高，测试不依赖图像库。"""
+    header = b"\x89PNG\r\n\x1a\n" + (13).to_bytes(4, "big") + b"IHDR"
+    return header + width.to_bytes(4, "big") + height.to_bytes(4, "big")
+
+
+async def test_preview_returns_data_url_size_and_dimensions(monkeypatch, tmp_path):
+    image = tmp_path / "shot.png"
+    image.write_bytes(_png_bytes(1600, 1440))
+    monkeypatch.setattr(
+        render_web,
+        "request",
+        _FakeRequest(
+            {"device_scale_factor": 2.0, "default_type": "png", "full_page": True}
+        ),
+    )
+    calls: list[tuple] = []
+
+    async def fake_preview(factor, quality, **kwargs):
+        calls.append((factor, quality, kwargs))
         return True, str(image)
 
     api = RenderWebApi(
         "astrbot_plugin_t2i_service",
-        state=dict,
+        state=lambda: {"default_type": "png", "full_page": True},
         save=lambda *args: None,  # type: ignore[arg-type]
         preview=fake_preview,
     )
     payload = _payload(await api.page_preview())
-    assert calls == [(1.5, 60)]
+    assert calls[0][0] == 2.0
+    assert calls[0][2] == {"shot_type": "png", "full_page": True}
+    # png 无损：质量不该再回给页面，否则界面会显示一个不起作用的数字
+    assert payload["quality"] is None
+    assert payload["image"].startswith("data:image/png;base64,")
+    assert (payload["width"], payload["height"]) == (1600, 1440)
+
+
+async def test_preview_honours_requested_format_and_quality(monkeypatch, tmp_path):
+    """jpeg 要能试质量，png 要能试无损：格式必须能透到渲染参数。"""
+    image = tmp_path / "shot.jpg"
+    image.write_bytes(b"\xff\xd8\xff\xd9")
+    monkeypatch.setattr(
+        render_web,
+        "request",
+        _FakeRequest({"device_scale_factor": 1.5, "quality": 60, "default_type": "jpeg"}),
+    )
+    calls: list[tuple] = []
+
+    async def fake_preview(factor, quality, **kwargs):
+        calls.append((factor, quality, kwargs))
+        return True, str(image)
+
+    api = RenderWebApi(
+        "astrbot_plugin_t2i_service",
+        state=lambda: {"default_type": "jpeg", "full_page": True},
+        save=lambda *args: None,  # type: ignore[arg-type]
+        preview=fake_preview,
+    )
+    payload = _payload(await api.page_preview())
+    assert calls == [(1.5, 60, {"shot_type": "jpeg", "full_page": True})]
     assert payload["image"].startswith("data:image/jpeg;base64,")
     assert payload["quality"] == 60
     assert payload["bytes"] == 4
@@ -138,7 +212,7 @@ async def test_preview_returns_data_url_and_size(monkeypatch, tmp_path):
 async def test_preview_failure_is_reported(monkeypatch):
     monkeypatch.setattr(render_web, "request", _FakeRequest({}))
 
-    async def fake_preview(factor, quality):
+    async def fake_preview(factor, quality, **kwargs):
         return False, "浏览器没装"
 
     api = RenderWebApi(

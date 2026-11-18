@@ -81,6 +81,7 @@ from t2i_plugin.config import (  # noqa: E402
     MAX_QUALITY,
     MIN_DEVICE_SCALE_FACTOR,
     MIN_QUALITY,
+    RENDER_TYPES,
     T2IConfig,
     coerce_word_threshold,
     format_copy_kinds_note,
@@ -199,7 +200,7 @@ class T2IServicePlugin(Star):
         # 视图页面在插件卡片打开时才会被发现，两者都早于 initialize() 的执行时机。
         self.font_web.register(context)
 
-        # 出图清晰度：页面里直接填数字并试拍，比只给几档预设更容易调到满意
+        # 出图清晰度：页面里直接填数字并测试出图，比只给几档预设更容易调到满意
         self.render_web = RenderWebApi(
             PLUGIN_NAME,
             state=self._render_settings_state,
@@ -621,7 +622,10 @@ class T2IServicePlugin(Star):
             "quality_floor": render.quality_floor,
             "device_scale_factor": render.device_scale_factor,
             "full_page": render.full_page,
+            "force_type": render.force_type,
+            # 面板显示「实际会用的质量」：AstrBot 固定发 40，真正落盘的是抬完下限的值
             "effective_quality": self._effective_quality(),
+            "types": list(RENDER_TYPES),
             "ranges": {
                 "device_scale_factor": {
                     "min": MIN_DEVICE_SCALE_FACTOR,
@@ -633,9 +637,14 @@ class T2IServicePlugin(Star):
         }
 
     async def _save_render_settings(
-        self, factor: float, quality_floor: int, default_quality: int
+        self,
+        factor: float,
+        quality_floor: int,
+        default_quality: int,
+        default_type: str,
+        full_page: bool,
     ) -> dict[str, object]:
-        """把清晰度与质量写回插件配置，并立即对后续出图生效。
+        """把清晰度、质量、格式与整页开关写回插件配置，并立即对后续出图生效。
 
         改完要让 ``self.settings`` 与 HTTP 服务手里的那份配置一起更新，否则要等
         重启才生效；服务只读这几个字段，原地改最省事。
@@ -644,33 +653,47 @@ class T2IServicePlugin(Star):
         render.device_scale_factor = factor
         render.quality_floor = quality_floor
         render.default_quality = default_quality
+        render.default_type = default_type
+        render.full_page = full_page
         server_render = self.server.config.render
         server_render.device_scale_factor = factor
         server_render.quality_floor = quality_floor
         server_render.default_quality = default_quality
+        server_render.default_type = default_type
+        server_render.full_page = full_page
         await self._update_plugin_config(
             {
                 "render": {
                     "device_scale_factor": factor,
                     "quality_floor": quality_floor,
                     "default_quality": default_quality,
+                    "default_type": default_type,
+                    "full_page": full_page,
                 }
             }
         )
         logger.info(
-            f"[t2i] 出图参数已更新：{factor:g}x · 质量下限 {quality_floor}"
-            f" · 默认质量 {default_quality}"
+            f"[t2i] 出图参数已更新：{default_type.upper()} · {factor:g}x"
+            f" · 质量下限 {quality_floor} · 默认质量 {default_quality}"
+            f" · full_page={'开' if full_page else '关'}"
         )
         return self._render_settings_state()
 
     async def _render_clarity_preview(
-        self, factor: float, quality: int
+        self,
+        factor: float,
+        quality: int,
+        *,
+        shot_type: str = "jpeg",
+        full_page: bool = True,
     ) -> tuple[bool, str]:
-        """按给定参数试拍一张样张，供面板直观比较不同清晰度与质量。"""
+        """按给定参数测试出图，供面板直观比较清晰度、质量与格式。"""
         return await self.server.render_probe(
-            build_clarity_sample(factor, quality),
+            build_clarity_sample(factor, quality, shot_type),
             factor=factor,
             quality=quality,
+            shot_type=shot_type,
+            full_page=full_page,
         )
 
     def _installed_family_names(self) -> list[str]:
@@ -907,7 +930,12 @@ class T2IServicePlugin(Star):
         }
 
     def _effective_quality(self) -> int:
-        """请求里实际会用的 JPEG 质量：质量下限会抬高低质量的请求。"""
+        """AstrBot 请求实际会用的 JPEG 质量。
+
+        AstrBot 每次固定发 quality=40，所以真实落盘的是「40 抬到下限」后的值；
+        默认质量只在请求没带质量时才用得上。显示必须按这条链路算，否则配置页
+        写着默认质量 80 时状态里会显示 80、实际却是 70。
+        """
         render = self.settings.render
         if render.quality_floor <= 0:
             return render.default_quality
@@ -916,6 +944,13 @@ class T2IServicePlugin(Star):
     def _render_output_note(self) -> str:
         """自检卡片上展示实际生效的输出参数，别让用户对着硬编码文案猜。"""
         render = self.settings.render
+        if render.default_type == "png":
+            # png 无损，质量参数不参与，写出来只会让人以为调它有用
+            return (
+                f"PNG · 无损"
+                f" · {render.device_scale_factor:g}x"
+                f" · full_page={'开' if render.full_page else '关'}"
+            )
         return (
             f"{render.default_type.upper()} · quality {self._effective_quality()}"
             f" · {render.device_scale_factor:g}x"

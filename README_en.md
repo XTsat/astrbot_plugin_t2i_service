@@ -18,7 +18,7 @@ Renders HTML / Jinja2 templates into images inside the AstrBot process and serve
 - **Rendering timing under your control**: the text-to-image output switch and the word threshold are edited right on the plugin config page, no diving into AstrBot's core config.
 - **Copyable bits sent again as text**: once a reply is rendered into an image, links, code blocks, config lines and file paths can no longer be copied; the plugin sends them again as an extra message (a QQ merged-forward message by default), while the image itself stays unchanged. Pick which kinds to detect, so links alone are fine.
 - **Rendering stays available**: while local rendering is unavailable, requests are proxied to the fallback endpoint so text-to-image keeps working in chat.
-- **Adjustable output sharpness**: images render at 2x pixels and quality 70 by default, so text stays crisp when zoomed in on a phone. Both are plain numbers rather than fixed presets: drag or type them in "T2I Service Panel → Overview → Output sharpness", press "Test shot" to compare on the spot, and "Save and apply" to use them for the next render. The same values are also on the plugin config page; sharpness 1 with quality floor 0 gives the old look back.
+- **Adjustable output sharpness**: images render at 2x pixels and quality 70 by default, so text stays crisp when zoomed in on a phone. Both are plain numbers rather than fixed presets, the output format can be JPEG or PNG, and full-page capture can be toggled: change them in "T2I Service Panel → Overview → Output sharpness", press "Test render" to see the result on the spot (it shows the image's pixel size and file size), and "Save and apply" to use them for the next render. The same values are also on the plugin config page; sharpness 1 with quality floor 0 gives the old look back.
 - **Status at a glance**: `/t2i_status` reports the service, the browser, system libraries, the endpoint and render stats; `/t2i_test` renders a card on the spot.
 - **Same interface as upstream**: AstrBot and any compatible client need no code changes.
 
@@ -155,13 +155,14 @@ Decide right on the plugin config page when AstrBot renders a reply into an imag
 | Launch Chromium with `--no-sandbox` (`no_sandbox`) | switch | on | Required for root deployments; turn off only for non-root with a sandbox |
 
 <details>
-<summary>Other rendering options (7)</summary>
+<summary>Other rendering options (8)</summary>
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | Close Chromium after being idle (`idle_timeout_seconds`) | number | `300` | Closes it to free memory; `0` never closes it |
 | Warm the browser up on startup (`prelaunch`) | switch | off | Skips the cold start on the first request, at the cost of a resident process |
-| Default output format (`default_type`) | dropdown | `jpeg` | Used when the request has no `options.type` |
+| Default output format (`default_type`) | dropdown | `jpeg` | `jpeg` is small, `png` is lossless; AstrBot always sends `jpeg`, so enable the next option for this to take effect |
+| Force the configured format (`force_type`) | switch | off | When on, the configured format wins and the request only decides quality; otherwise AstrBot's `jpeg` overrides it |
 | Default JPEG quality (`default_quality`) | number | `40` | `0`–`100`, jpeg only; used when the request has no quality |
 | JPEG quality floor (`quality_floor`) | number | `70` | A requested quality below this is raised to it (AstrBot always sends 40); `0` keeps whatever the request asks for |
 | Output sharpness (`device_scale_factor`) | number | `2` | Pixel multiplier for rendering, `1`–`3`: higher means crisper text but larger images and slower renders; `1` matches the old behaviour; very long replies step down one level so they still render |

@@ -672,3 +672,32 @@ async def test_quality_floor_keeps_higher_requested_quality(client):
     assert resp.status == 200
     options = [call for name, call in renderer.calls if name == "html2pic"][-1]
     assert options.quality == 95
+
+
+async def test_configured_format_loses_to_astrbot_request_by_default(client):
+    """AstrBot 固定发 type=jpeg：没开强制格式时，配置里的 png 不生效。"""
+    test_client, server, renderer = client
+    server.config.render.default_type = "png"
+    resp = await test_client.post(
+        "/text2img/generate",
+        json={"html": "<p>x</p>", "options": {"type": "jpeg", "quality": 40}},
+    )
+    assert resp.status == 200
+    options = [call for name, call in renderer.calls if name == "html2pic"][-1]
+    assert options.type == "jpeg"
+
+
+async def test_force_type_makes_configured_format_win(client):
+    """开了 force_type 才轮到配置说了算，否则面板里选 png 永远出不来。"""
+    test_client, server, renderer = client
+    server.config.render.default_type = "png"
+    server.config.render.force_type = True
+    resp = await test_client.post(
+        "/text2img/generate",
+        json={"html": "<p>x</p>", "options": {"type": "jpeg", "quality": 40}},
+    )
+    assert resp.status == 200
+    options = [call for name, call in renderer.calls if name == "html2pic"][-1]
+    assert options.type == "png"
+    # png 无损，质量参数必须被丢掉，否则 Playwright 会报错
+    assert options.quality is None

@@ -108,7 +108,7 @@ service/main.py ─────────────────────�
 | 卡片用的 HTML 片段 | `t2i_plugin/card.py` |
 | 字体下载/上传/fontconfig 供给 | `t2i_plugin/fonts.py` |
 | 面板的字体 Web API | `t2i_plugin/font_web.py` |
-| 面板的出图清晰度 Web API（读写清晰度/质量、试拍样张） | `t2i_plugin/render_web.py` |
+| 面板的出图清晰度 Web API（读写清晰度/质量/格式/整页、测试出图） | `t2i_plugin/render_web.py` |
 | 面板的模板 Web API | `t2i_plugin/template_web.py` |
 | 转图模板清单 / 新建编辑删除 / 应用 / 预览缓存 | `t2i_plugin/templates.py`（用户目录、插件自带目录与内置目录三处模板合并、新建与保存用户模板、显示名与删除、槽位模板写入、预览图缓存） |
 | 随插件发布的转图模板 | `t2i_plugin/plugin_templates/*.html` + `plugin_templates/assets/`（文件名即模板名，面板来源显示为「插件」；模板里按 `assets/文件名` 引用图片，读模板时内联成 data URI；同名的以用户副本为准，其次以插件自带为准） |
@@ -291,7 +291,7 @@ class T2IServicePlugin(Star):
 | 段 | 关键项 | 说明 |
 |---|---|---|
 | `server` | `enabled`、`host`、`port`、`auth_token`、`fallback_enabled`、`fallback_endpoint` | 内嵌 HTTP 服务 |
-| `render` | `concurrency`、`no_sandbox`、`idle_timeout_seconds`、`prelaunch`、`default_type`、`default_quality`、`quality_floor`、`device_scale_factor`、`full_page` | 渲染行为 |
+| `render` | `concurrency`、`no_sandbox`、`idle_timeout_seconds`、`prelaunch`、`default_type`、`force_type`、`default_quality`、`quality_floor`、`device_scale_factor`、`full_page` | 渲染行为 |
 | `browser` | `browsers_path`、`download_host`、`executable_path`、`auto_install_deps`、`cleanup_orphans`、`install_timeout_seconds` | 浏览器供给 |
 | `endpoint` | `auto_configure`、`service_url`、`current_service_url`（展示用，插件回写） | 是否写 AstrBot 主配置 |
 | `output` | `enabled`、`word_threshold`、`copy_extra`、`copy_kinds`、`core_synced`（回写标记，隐藏） | AstrBot 文转图输出：什么时候转图、可复制内容识别哪几类、怎么补发 |
@@ -310,7 +310,8 @@ class T2IServicePlugin(Star):
 - **例外之一（`browser.download_chromium` / `browser.chromium_ready`）**：AstrBot 配置页只有开关 + 保存、没有按钮控件，所以「一键下载 Chromium」做成一次性开关——`main.py` 的 `_update_plugin_config` 把它收回，并回写浏览器就绪状态供配置页显示是否已就绪（开关本身常显，不用 `condition` 隐藏）。
 - **例外之二（`endpoint.current_service_url`）**：配置页没有只读文本控件，用户看不到插件实际会写入哪个地址，所以启动时由 `_sync_service_url_field()` 把算好的地址回写到该字段；它只用于展示，不参与 `resolve_service_url()` 解析，用户手改的值下次启动会被覆盖。
 - **例外之三（`output.core_synced`）**：`output.enabled` / `output.word_threshold` 首次启动要沿用 AstrBot 现有设置（避免升级时用插件默认值覆盖），所以由 `_sync_t2i_output()` 在首次运行时把取到的值回写进插件配置并打上隐藏标记；之后以插件配置为准写回 AstrBot 主配置。
-- 除以上四项外不要再新增回写。
+- **例外之四（`render.device_scale_factor` / `quality_floor` / `default_quality` / `default_type` / `full_page`）**：面板「出图清晰度」要能当场调完就生效，`main.py` 的 `_save_render_settings` 把这五项写回插件配置，并同步改掉 `self.settings` 与 HTTP 服务手里的同一份 `RenderConfig`。只允许面板保存这一个入口写，别处不要再碰。
+- 除以上五项外不要再新增回写。
 
 ### 5.3 数据文件
 

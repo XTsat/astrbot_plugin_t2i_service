@@ -18,6 +18,7 @@ from typing import Awaitable, Callable
 
 from astrbot.api import logger
 
+from t2i_plugin.config import clamp_device_scale_factor
 from t2i_plugin.fonts import FontManager
 
 try:
@@ -259,7 +260,11 @@ SPECIMEN_SCALES = ("normal", "high", "ultra")
 
 
 def _coerce_factor(value: object) -> float | None:
-    """把页面传来的清晰度转成像素比；非法值返回 None（交给渲染器默认值）。"""
+    """把页面传来的清晰度转成像素比；非法值返回 None（交给渲染器默认值）。
+
+    越界值夹到与出图清晰度相同的范围：字体预览自检与真实出图应当能直接对比，
+    两处上限不一致时「预览清楚、出图糊」会被误判成渲染问题。
+    """
     if value is None or isinstance(value, bool):
         return None
     try:
@@ -268,7 +273,7 @@ def _coerce_factor(value: object) -> float | None:
         return None
     if factor <= 0:
         return None
-    return factor
+    return clamp_device_scale_factor(factor)
 
 # 每个家族要画哪几种字重的行：两者都画 / 只画常规 / 只画粗体
 SPECIMEN_WEIGHTS = ("both", "regular", "bold")

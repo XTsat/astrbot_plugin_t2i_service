@@ -22,7 +22,13 @@ DEFAULT_PORT = 8999
 # 放大后发糊），2.0 表示两倍像素；再高只会让图片体积与渲染耗时白涨。
 DEFAULT_DEVICE_SCALE_FACTOR = 2.0
 MIN_DEVICE_SCALE_FACTOR = 1.0
+# 用户可调范围的上限。渲染核心另有一道 1.0–4.0 的硬边界只用来挡住手滑的请求；
+# 面板、配置页、字体预览自检都按这里的 3.0 显示，三处不能各写一个数字。
 MAX_DEVICE_SCALE_FACTOR = 3.0
+
+# 输出格式：jpeg 体积小，png 无损但大；配置页、面板与测试出图共用这一份取值表
+RENDER_TYPES = ("jpeg", "png")
+DEFAULT_RENDER_TYPE = "jpeg"
 
 # JPEG 质量下限：AstrBot 每次请求都固定发 quality=40，2 倍像素下这个质量能看出
 # 明显压缩痕迹。0 表示不干预请求里的质量。
@@ -94,6 +100,17 @@ def clamp_quality(value: Any, default: int = DEFAULT_QUALITY_FLOOR) -> int:
     return min(MAX_QUALITY, max(MIN_QUALITY, _as_int(value, default)))
 
 
+def coerce_bool(value: Any, default: bool) -> bool:
+    """归一化布尔配置：WebUI 可能给字符串，页面 JSON 也可能给 null。"""
+    return _as_bool(value, default)
+
+
+def coerce_render_type(value: Any, default: str = DEFAULT_RENDER_TYPE) -> str:
+    """归一化输出格式：只认 jpeg / png，其它值回落默认，避免写进配置后渲染才炸。"""
+    text = _as_str(value).lower()
+    return text if text in RENDER_TYPES else default
+
+
 def _as_str(value: Any, default: str = "") -> str:
     if value is None:
         return default
@@ -158,13 +175,16 @@ class RenderConfig:
     no_sandbox: bool = True
     idle_timeout_seconds: int = 300
     prelaunch: bool = False
-    default_type: str = "jpeg"
+    default_type: str = DEFAULT_RENDER_TYPE
     default_quality: int = 40
     # 请求里的 JPEG 质量低于该值时抬到该值；0 = 不干预
     quality_floor: int = DEFAULT_QUALITY_FLOOR
     # 输出图的设备像素比：请求显式带清晰度参数时以请求为准
     device_scale_factor: float = DEFAULT_DEVICE_SCALE_FACTOR
     full_page: bool = True
+    # 请求固定自带 type=jpeg 时是否仍按 default_type 出图。AstrBot 每次请求都写死
+    # type=jpeg，不强制的话配置页与面板里选 png 其实永远不生效
+    force_type: bool = False
 
 
 @dataclass
@@ -274,7 +294,7 @@ class T2IConfig:
                 0, _as_int(render_raw.get("idle_timeout_seconds"), 300)
             ),
             prelaunch=_as_bool(render_raw.get("prelaunch"), False),
-            default_type=_as_str(render_raw.get("default_type"), "jpeg") or "jpeg",
+            default_type=coerce_render_type(render_raw.get("default_type")),
             default_quality=_as_int(render_raw.get("default_quality"), 40),
             quality_floor=clamp_quality(
                 render_raw.get("quality_floor"), DEFAULT_QUALITY_FLOOR
@@ -283,6 +303,7 @@ class T2IConfig:
                 render_raw.get("device_scale_factor")
             ),
             full_page=_as_bool(render_raw.get("full_page"), True),
+            force_type=_as_bool(render_raw.get("force_type"), False),
         )
 
         browser = BrowserConfig(

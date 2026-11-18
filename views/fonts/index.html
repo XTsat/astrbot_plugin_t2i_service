@@ -187,7 +187,7 @@
                   id="specimen-scale"
                   type="number"
                   min="1"
-                  max="4"
+                  max="3"
                   step="0.1"
                   value="2"
                   data-i18n-aria-label="manage.specimen.scaleAria"
@@ -231,7 +231,7 @@
             <h2 data-i18n="clarity.title">出图清晰度</h2>
             <div class="head-tools">
               <button class="ghost" id="btn-clarity-preview" data-i18n="clarity.preview">
-                试拍样张
+                测试出图
               </button>
               <button class="primary" id="btn-clarity-save" data-i18n="clarity.save">
                 保存并生效
@@ -241,7 +241,7 @@
           <p class="muted small" data-i18n-html="clarity.hint">
             这里直接填数字，改完点「保存并生效」立即对后续出图生效。清晰度是渲染时的像素倍数：
             <code>1</code> 与旧版一致（图小、手机端放大后发糊），<code>2</code> 表示两倍像素。
-            质量是 JPEG 压缩强度，越低越糊、图片也越小。
+            质量是 JPEG 压缩强度，越低越糊、图片也越小；PNG 无损，质量对它不生效。
           </p>
           <div class="clarity-grid">
             <label class="field-block">
@@ -289,6 +289,29 @@
                   value="70"
                   data-i18n-aria-label="clarity.qualityAria"
                 />
+              </div>
+            </label>
+            <label class="field-block">
+              <span data-i18n="clarity.typeLabel">输出格式</span>
+              <div class="field-row">
+                <select id="clarity-type" data-i18n-aria-label="clarity.typeAria">
+                  <option value="jpeg" data-i18n="clarity.typeJpeg">JPEG（体积小）</option>
+                  <option value="png" data-i18n="clarity.typePng">PNG（无损，体积大）</option>
+                </select>
+              </div>
+            </label>
+            <label class="field-block">
+              <span data-i18n="clarity.fullPageLabel">整页截图</span>
+              <div class="field-row">
+                <input
+                  id="clarity-full-page"
+                  type="checkbox"
+                  checked
+                  data-i18n-aria-label="clarity.fullPageAria"
+                />
+                <span class="muted small" data-i18n="clarity.fullPageHint">
+                  关闭后只截可视区域，长文本可能被截断
+                </span>
               </div>
             </label>
           </div>

@@ -119,7 +119,14 @@ def test_clarity_sample_shows_parameters_and_is_self_contained():
     html = build_clarity_sample(2.5, 80)
     assert "2.5x" in html
     assert "质量 80" in html
-    # 试拍样张同样不能依赖外链，断网也要能出图
+    # 测试样张同样不能依赖外链，断网也要能出图
     lowered = html.lower()
     for marker in EXTERNAL_MARKERS:
         assert marker not in lowered, marker
+
+
+def test_clarity_sample_png_hides_quality():
+    """png 无损：参数行里不能再写 JPEG 质量，否则用户以为那个数字生效了。"""
+    html = build_clarity_sample(2.0, 70, "png")
+    assert "PNG 无损" in html
+    assert "质量 70" not in html

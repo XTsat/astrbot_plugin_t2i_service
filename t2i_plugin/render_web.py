@@ -6,9 +6,9 @@
 三个接口：
 
 * ``render/settings``（GET） —— 当前生效的格式、质量、清晰度与可调范围；
-* ``render/settings``（POST）—— 保存清晰度与质量，立即对后续出图生效；
-* ``render/preview``（POST）—— 按给定参数试拍一张样张，返回 data URL 与尺寸，
-  方便在同一屏里对比「1 倍 / 2 倍」「质量 40 / 80」的差别。
+* ``render/settings``（POST）—— 保存清晰度、质量、格式与整页开关，立即对后续出图生效；
+* ``render/preview``（POST）—— 按给定参数测试出图，返回 data URL 与像素尺寸，
+  方便在同一屏里对比「1 倍 / 2 倍」「质量 40 / 80」「JPEG / PNG」的差别。
 """
 
 from __future__ import annotations
@@ -27,6 +27,8 @@ from t2i_plugin.config import (
     MIN_QUALITY,
     clamp_device_scale_factor,
     clamp_quality,
+    coerce_bool,
+    coerce_render_type,
 )
 
 try:
@@ -42,15 +44,15 @@ except Exception:  # noqa: BLE001
 
 
 class RenderWebApi:
-    """把「出图清晰度」的读写与试拍暴露成页面可调用的接口。"""
+    """把「出图清晰度」的读写与测试出图暴露成页面可调用的接口。"""
 
     def __init__(
         self,
         plugin_name: str,
         *,
         state: Callable[[], dict[str, object]],
-        save: Callable[[float, int, int], Awaitable[dict[str, object]]],
-        preview: Callable[[float, int], Awaitable[tuple[bool, str]]],
+        save: Callable[..., Awaitable[dict[str, object]]],
+        preview: Callable[..., Awaitable[tuple[bool, str]]],
     ) -> None:
         self.plugin_name = plugin_name
         self.state = state
@@ -121,16 +123,28 @@ class RenderWebApi:
         # 只传了其中一两项时，其余沿用当前值：页面上改一个滑块不该把别的重置
         raw_factor = payload.get("device_scale_factor", current["device_scale_factor"])
         factor = clamp_device_scale_factor(raw_factor)
-        quality_floor = clamp_quality(
-            payload.get("quality_floor", current["quality_floor"]),
-            int(current["quality_floor"]),
+        # 面板只有一个「质量」滑块：它同时写默认质量与质量下限，否则两个值打架时
+        # 用户看到 80、实际按 70 出图。没传质量时两个字段各自保留原值
+        if "quality" in payload:
+            quality = clamp_quality(payload.get("quality"), int(current["quality_floor"]))
+            quality_floor = default_quality = quality
+        else:
+            quality_floor = clamp_quality(
+                current["quality_floor"], int(current["quality_floor"])
+            )
+            default_quality = clamp_quality(
+                current["default_quality"], int(current["default_quality"])
+            )
+        render_type = coerce_render_type(
+            payload.get("default_type", current.get("default_type"))
         )
-        default_quality = clamp_quality(
-            payload.get("default_quality", current["default_quality"]),
-            int(current["default_quality"]),
+        full_page = coerce_bool(
+            payload.get("full_page"), bool(current.get("full_page"))
         )
         try:
-            saved = await self.save(factor, quality_floor, default_quality)
+            saved = await self.save(
+                factor, quality_floor, default_quality, render_type, full_page
+            )
         except Exception as exc:  # noqa: BLE001 - 保存失败要把原因回给页面
             logger.warning(f"[t2i] 保存出图参数失败：{exc}")
             return self._fail(f"保存失败：{exc}", status_code=500)
@@ -140,25 +154,47 @@ class RenderWebApi:
         payload = await request.json(default={})
         if not isinstance(payload, dict):
             return self._fail("请求体必须是对象")
+        current = self.state()
         factor = clamp_device_scale_factor(
-            payload.get("device_scale_factor")
+            payload.get("device_scale_factor", current.get("device_scale_factor"))
         )
-        quality = clamp_quality(payload.get("quality"), 70)
+        # 质量跟随面板当前值（也就是真实出图会用的那个），不传时才退回当前配置
+        quality = clamp_quality(
+            payload.get("quality", current.get("quality_floor")), 70
+        )
+        render_type = coerce_render_type(
+            payload.get("default_type", current.get("default_type"))
+        )
+        full_page = coerce_bool(
+            payload.get("full_page", current.get("full_page")), True
+        )
+        # png 无损，质量参数对它没有意义，回给页面时也别显示成「质量 70」
+        shown_quality = None if render_type == "png" else quality
         try:
-            ok, detail = await self.preview(factor, quality)
+            ok, detail = await self.preview(
+                factor,
+                quality,
+                shot_type=render_type,
+                full_page=full_page,
+            )
         except Exception as exc:  # noqa: BLE001 - 渲染失败要把原因回给页面
-            logger.warning(f"[t2i] 渲染出图样张失败：{exc}")
+            logger.warning(f"[t2i] 测试出图失败：{exc}")
             return self._fail(f"渲染失败：{exc}", status_code=500)
         if not ok:
             return self._fail(f"渲染失败：{detail}", status_code=500)
         data = await asyncio.to_thread(_read_b64, detail)
         if not data:
-            return self._fail("样张读取失败", status_code=500)
+            return self._fail("出图结果读取失败", status_code=500)
+        width, height = await asyncio.to_thread(_image_size, detail)
         return self._ok(
             {
-                "image": f"data:image/jpeg;base64,{data}",
+                "image": f"data:image/{render_type};base64,{data}",
                 "device_scale_factor": factor,
-                "quality": quality,
+                "default_type": render_type,
+                "quality": shown_quality,
+                "full_page": full_page,
+                "width": width,
+                "height": height,
                 "bytes": await asyncio.to_thread(_file_size, detail),
             }
         )
@@ -177,6 +213,51 @@ def _file_size(path: str) -> int:
         return Path(path).stat().st_size
     except OSError:
         return 0
+
+
+def _image_size(path: str) -> tuple[int, int]:
+    """读出图片像素宽高，让页面能证明「2 倍」真的生效了。
+
+    只解析 PNG / JPEG 头，不引入图像库：插件运行时不想为了两个数字多一个依赖。
+    解析不出来就回 (0, 0)，页面按「尺寸未知」显示。
+    """
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(26)
+            if head[:8] == b"\x89PNG\r\n\x1a\n":
+                width = int.from_bytes(head[16:20], "big")
+                height = int.from_bytes(head[20:24], "big")
+                return width, height
+            if head[:2] == b"\xff\xd8":
+                return _jpeg_size(fh)
+    except OSError as exc:
+        logger.warning(f"[t2i] 读取图片尺寸失败：{exc}")
+    return 0, 0
+
+
+def _jpeg_size(fh) -> tuple[int, int]:
+    """在 JPEG 的 SOF 段里找宽高；段头是 0xFF 0xMN + 两字节长度。"""
+    fh.seek(2)
+    while True:
+        marker = fh.read(2)
+        if len(marker) < 2 or marker[0] != 0xFF:
+            return 0, 0
+        code = marker[1]
+        # SOF0..SOF15（除去 DHT/JPG/DAC 三个非 SOF）里带着宽高
+        if 0xC0 <= code <= 0xCF and code not in (0xC4, 0xC8, 0xCC):
+            segment = fh.read(7)
+            if len(segment) < 7:
+                return 0, 0
+            height = int.from_bytes(segment[3:5], "big")
+            width = int.from_bytes(segment[5:7], "big")
+            return width, height
+        length_raw = fh.read(2)
+        if len(length_raw) < 2:
+            return 0, 0
+        length = int.from_bytes(length_raw, "big")
+        if length < 2:
+            return 0, 0
+        fh.seek(length - 2, 1)
 
 
 __all__ = [

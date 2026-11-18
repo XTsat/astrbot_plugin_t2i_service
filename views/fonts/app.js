@@ -36,6 +36,8 @@ const els = {
   clarityScaleNumber: $("clarity-scale-number"),
   clarityQuality: $("clarity-quality"),
   clarityQualityNumber: $("clarity-quality-number"),
+  clarityType: $("clarity-type"),
+  clarityFullPage: $("clarity-full-page"),
   clarityCurrent: $("clarity-current"),
   clarityCaption: $("clarity-caption"),
   clarityBox: $("clarity-box"),
@@ -1310,24 +1312,31 @@ function bindClarityPair(rangeEl, numberEl, onChange) {
 /** 显示「当前生效」的那一行：用户需要知道改动有没有真的落地。 */
 function renderClarityCurrent(settings) {
   if (!els.clarityCurrent || !settings) return;
+  const type = String(settings.default_type || "").toLowerCase();
+  // PNG 无损，质量不参与出图：写出来只会让人以为调它有用
+  const qualityText =
+    type === "png"
+      ? t("clarity.currentLossless", "无损")
+      : t("clarity.currentQuality", "质量 {quality}", {
+          quality: settings.effective_quality,
+        });
   els.clarityCurrent.textContent = t(
     "clarity.current",
-    "当前生效：清晰度 {scale}x · 质量下限 {floor} · 默认质量 {quality} · 格式 {type}",
+    "当前生效：{type} · 清晰度 {scale}x · {quality} · 整页截图 {fullPage}",
     {
+      type: type.toUpperCase(),
       scale: Number(settings.device_scale_factor).toFixed(1),
-      floor: settings.quality_floor,
-      quality: settings.default_quality,
-      type: String(settings.default_type || "").toUpperCase(),
+      quality: qualityText,
+      fullPage: settings.full_page
+        ? t("clarity.on", "开")
+        : t("clarity.off", "关"),
     },
   );
 }
 
-/** 拉一次出图参数并填进控件；页面打开时与保存后都会调用。 */
-async function loadClaritySettings() {
-  if (!els.clarityScale) return;
-  const data = await apiGet("render/settings");
-  if (!data) return;
-  state.clarity = data;
+/** 把一份出图参数填进控件（滑杆边界、格式、整页开关）；加载与保存后共用。 */
+function loadClarityControls(data) {
+  if (!els.clarityScale || !data) return;
   const ranges = data.ranges || {};
   const scaleRange = ranges.device_scale_factor || {};
   const qualityRange = ranges.quality || {};
@@ -1338,17 +1347,44 @@ async function loadClaritySettings() {
     if (scaleRange.step != null) el.step = String(scaleRange.step);
     el.value = String(data.device_scale_factor);
   }
+  // 滑杆对应「实际生效的质量」：AstrBot 固定发 40，真正落盘的是抬完下限的值，
+  // 显示 quality_floor 会让用户以为改了默认质量就能生效
+  const shownQuality =
+    data.effective_quality != null ? data.effective_quality : data.quality_floor;
   for (const el of [els.clarityQuality, els.clarityQualityNumber]) {
     if (!el) continue;
     if (qualityRange.min != null) el.min = String(qualityRange.min);
     if (qualityRange.max != null) el.max = String(qualityRange.max);
     if (qualityRange.step != null) el.step = String(qualityRange.step);
-    el.value = String(data.quality_floor);
+    el.value = String(shownQuality);
   }
+  if (els.clarityType) {
+    const types =
+      Array.isArray(data.types) && data.types.length ? data.types : ["jpeg", "png"];
+    for (const value of types) {
+      // 后端多支持了新格式时，前端不用改也能选到
+      if ([...els.clarityType.options].some((o) => o.value === value)) continue;
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value.toUpperCase();
+      els.clarityType.append(option);
+    }
+    els.clarityType.value = String(data.default_type || "jpeg").toLowerCase();
+  }
+  if (els.clarityFullPage) els.clarityFullPage.checked = data.full_page !== false;
+}
+
+/** 拉一次出图参数并填进控件；页面打开时调用。 */
+async function loadClaritySettings() {
+  if (!els.clarityScale) return;
+  const data = await apiGet("render/settings");
+  if (!data) return;
+  state.clarity = data;
+  loadClarityControls(data);
   renderClarityCurrent(data);
 }
 
-/** 用当前控件里的值试拍一张样张，用来直观比较清晰度与质量。 */
+/** 用当前控件里的值测试出图，直观比较清晰度、质量与格式的差别。 */
 async function previewClarity() {
   if (!els.btnClarityPreview) return;
   const scale = Number(els.clarityScaleNumber ? els.clarityScaleNumber.value : 0);
@@ -1357,25 +1393,44 @@ async function previewClarity() {
   );
   if (!Number.isFinite(scale) || !Number.isFinite(quality)) return;
   els.btnClarityPreview.disabled = true;
-  els.btnClarityPreview.textContent = t("clarity.previewing", "试拍中…");
+  els.btnClarityPreview.textContent = t("clarity.previewing", "出图中…");
   try {
     const data = await apiPost("render/preview", {
       device_scale_factor: scale,
       quality,
+      default_type: els.clarityType ? els.clarityType.value : undefined,
+      full_page: els.clarityFullPage ? els.clarityFullPage.checked : true,
     });
     if (!data) return;
     els.clarityImg.src = data.image;
     els.clarityBox.hidden = false;
     const kb = Math.max(1, Math.round((Number(data.bytes) || 0) / 1024));
+    // 尺寸是「清晰度真的生效」的唯一证据：2 倍应当正好是两倍像素
+    const width = Number(data.width) || 0;
+    const height = Number(data.height) || 0;
+    const sizeText = width && height
+      ? `${width}×${height}`
+      : t("clarity.sizeUnknown", "尺寸未知");
+    const type = String(data.default_type || "").toLowerCase();
+    const qualityText =
+      type === "png"
+        ? t("clarity.currentLossless", "无损")
+        : t("clarity.currentQuality", "质量 {quality}", { quality: data.quality });
     els.clarityCaption.hidden = false;
     els.clarityCaption.textContent = t(
       "clarity.caption",
-      "本次样张：清晰度 {scale}x · 质量 {quality} · 约 {kb} KB（数值越大越清晰、文件也越大）",
-      { scale: Number(data.device_scale_factor).toFixed(1), quality: data.quality, kb },
+      "本次测试：{type} · 清晰度 {scale}x · {quality} · {size} · 约 {kb} KB",
+      {
+        type: type.toUpperCase(),
+        scale: Number(data.device_scale_factor).toFixed(1),
+        quality: qualityText,
+        size: sizeText,
+        kb,
+      },
     );
   } finally {
     els.btnClarityPreview.disabled = false;
-    els.btnClarityPreview.textContent = t("clarity.preview", "试拍样张");
+    els.btnClarityPreview.textContent = t("clarity.preview", "测试出图");
   }
 }
 
@@ -1395,16 +1450,24 @@ async function saveClarity() {
   try {
     const data = await apiPost("render/settings", {
       device_scale_factor: scale,
-      quality_floor: quality,
+      quality,
+      default_type: els.clarityType ? els.clarityType.value : undefined,
+      full_page: els.clarityFullPage ? els.clarityFullPage.checked : true,
     });
     if (!data) return;
     state.clarity = data;
+    loadClarityControls(data);
     renderClarityCurrent(data);
     toast(
-      t("clarity.saved", "已保存：清晰度 {scale}x · 质量下限 {floor}，后续出图立即生效", {
-        scale: Number(data.device_scale_factor).toFixed(1),
-        floor: data.quality_floor,
-      }),
+      t(
+        "clarity.saved",
+        "已保存：{type} · 清晰度 {scale}x · 质量 {quality}，后续出图立即生效",
+        {
+          type: String(data.default_type || "").toUpperCase(),
+          scale: Number(data.device_scale_factor).toFixed(1),
+          quality: data.effective_quality,
+        },
+      ),
       "ok",
     );
   } finally {
@@ -1417,6 +1480,18 @@ function bindClarity() {
   if (!els.clarityScale) return;
   bindClarityPair(els.clarityScale, els.clarityScaleNumber);
   bindClarityPair(els.clarityQuality, els.clarityQualityNumber);
+  // 格式与整页开关改完还没保存，先按控件现值提示一次，避免「当前生效」看着没反应
+  for (const el of [els.clarityType, els.clarityFullPage]) {
+    if (!el) continue;
+    el.addEventListener("change", () => {
+      if (!state.clarity) return;
+      renderClarityCurrent({
+        ...state.clarity,
+        default_type: els.clarityType ? els.clarityType.value : state.clarity.default_type,
+        full_page: els.clarityFullPage ? els.clarityFullPage.checked : state.clarity.full_page,
+      });
+    });
+  }
   if (els.btnClarityPreview) {
     els.btnClarityPreview.addEventListener("click", previewClarity);
   }

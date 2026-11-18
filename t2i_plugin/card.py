@@ -309,19 +309,23 @@ _CLARITY_SAMPLE_STYLE = """
 """
 
 
-def build_clarity_sample(factor: float, quality: int) -> str:
-    """构造出图清晰度的试拍样张。
+def build_clarity_sample(
+    factor: float, quality: int, shot_type: str = "jpeg"
+) -> str:
+    """构造出图清晰度的测试样张。
 
     样张同时放正文、小号灰字、细线与渐变色块：这四类最能看出「放大后糊不糊」
-    和「JPEG 压缩痕迹重不重」。标题里写明本次参数，方便并排对比两次试拍。
+    和「压缩痕迹重不重」。标题里写明本次参数，方便并排对比两次测试。png 无损，
+    质量参数不参与，参数行里就别写它。
     """
+    quality_note = "PNG 无损" if shot_type == "png" else f"JPEG 质量 {quality}"
     body = f"""
 <div class="card">
   <div class="head">
     <span class="dot ok"></span>
-    <h1>出图清晰度试拍</h1>
+    <h1>出图清晰度测试</h1>
   </div>
-  <div class="meta">清晰度 {factor:g}x · JPEG 质量 {quality} · {_esc(_now())}</div>
+  <div class="meta">清晰度 {factor:g}x · {quality_note} · {_esc(_now())}</div>
   <p class="body-text">
     这一行是正文字号的中文示例：AstrBot 会把较长的回复渲染成图片，文字边缘是否
     干净、笔画之间是否粘在一起，在手机端放大后差别很明显。含英文 AstrBot T2I 与
@@ -344,7 +348,7 @@ def build_clarity_sample(factor: float, quality: int) -> str:
   </div>
 </div>
 <style>{_CLARITY_SAMPLE_STYLE}</style>"""
-    return _document("出图清晰度试拍", body)
+    return _document("出图清晰度测试", body)
 
 
 def build_font_specimen(

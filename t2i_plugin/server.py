@@ -383,10 +383,17 @@ class T2IHttpServer:
         if "device_scale_factor_level" in request_options:
             base["device_scale_factor"] = None
         base.update(request_options)
+        # AstrBot 每次请求都写死 type=jpeg，配置里选 png 会被请求顶掉。开了
+        # force_type 才反过来：格式以配置为准，请求只决定质量
+        if render_cfg.force_type:
+            base["type"] = render_cfg.default_type
         # AstrBot 固定发 quality=40，2 倍像素下压缩痕迹肉眼可见；只抬下限，
         # 请求要更高的质量照旧，配置为 0 时完全不干预
         floor = render_cfg.quality_floor
-        if floor > 0 and base.get("type") != "png":
+        if base.get("type") == "png":
+            # png 无损，质量对它没有意义；留着只会让下游以为这个数字生效了
+            base["quality"] = None
+        elif floor > 0:
             current = base.get("quality")
             if not isinstance(current, int) or current < floor:
                 base["quality"] = floor
@@ -535,13 +542,16 @@ class T2IHttpServer:
         *,
         factor: float | None = None,
         quality: int | None = None,
+        shot_type: str | None = None,
+        full_page: bool = True,
     ) -> tuple[bool, str]:
-        """同步渲染一段 HTML，用于 /t2i_test、状态页自检与面板试拍。
+        """同步渲染一段 HTML，用于 /t2i_test、状态页自检与面板的出图测试。
 
         ``width`` 覆盖视口宽度（不传走渲染器默认值）；``scale`` 选像素比档位
         （normal / high / ultra）；``factor`` 直接指定像素比，``quality`` 指定
-        JPEG 质量（此时输出 jpeg，用来直观看出压缩痕迹）。不传清晰度参数时用
-        配置里的值，让自检图与真实出图保持同一分辨率。
+        JPEG 质量。``shot_type`` 可选 jpeg / png：面板要能试出「糊是压缩还是
+        像素不够」，所以两种格式都得能出；不传时保持旧行为（给质量就是 jpeg，
+        否则 png）。不传清晰度参数时用配置里的值，让自检图与真实出图同一分辨率。
         """
         try:
             if factor is not None:
@@ -550,12 +560,17 @@ class T2IHttpServer:
                 level, use_factor = scale, None
             else:
                 level, use_factor = None, self.config.render.device_scale_factor
-            # 指定质量时必须是 jpeg：png 会丢掉质量参数，看不出压缩差异
-            shot_type = "jpeg" if quality is not None else "png"
+            # png 会丢掉质量参数，指定了质量就只能出 jpeg；没指定时按调用方要的格式
+            if shot_type in ("jpeg", "png"):
+                resolved_type = shot_type
+            else:
+                resolved_type = "jpeg" if quality is not None else "png"
+            if resolved_type == "png":
+                quality = None
             options = ScreenshotOptions(
-                type=shot_type,
+                type=resolved_type,
                 quality=quality,
-                full_page=True,
+                full_page=full_page,
                 viewport_width=width,
                 device_scale_factor_level=level,
                 device_scale_factor=use_factor,
@@ -564,7 +579,7 @@ class T2IHttpServer:
             picture = await self.renderer.html2pic(abs_path, options)
             label, _ = resolve_scale(options)
             RENDER_REQUESTS.labels(
-                result="success", format=shot_type, scale=label
+                result="success", format=resolved_type, scale=label
             ).inc()
             return True, picture
         except PlaywrightNotInstalledError as exc:
@@ -578,7 +593,8 @@ class T2IHttpServer:
         """按模板 + 变量渲染一张预览图，供面板「模板」栏展示排版效果。
 
         与真实渲染走同一条链路（同一个渲染器、同一套 Jinja2 沙箱），只是输出换成体积
-        更小的 jpeg：预览图要在页面里逐张加载，png 会白等好几秒。
+        更小的 jpeg：预览图要在页面里逐张加载，png 会白等好几秒。清晰度跟随配置，
+        否则面板里的效果图永远是一倍像素，比真实出图更糊、对比时会被误导。
         """
         try:
             _, abs_path = await self.renderer.from_jinja_template(tmpl, data)
@@ -589,6 +605,7 @@ class T2IHttpServer:
                     quality=TEMPLATE_PREVIEW_QUALITY,
                     full_page=True,
                     viewport_width=width,
+                    device_scale_factor=self.config.render.device_scale_factor,
                 ),
             )
             RENDER_REQUESTS.labels(result="success", format="jpeg", scale="normal").inc()

@@ -287,20 +287,32 @@
       },
       "clarity": {
         "title": "Output sharpness",
-        "hint": "Type the numbers directly and press Save to apply them to every later render. Sharpness is the pixel multiplier: <code>1</code> matches the old look (small image, blurry when zoomed on a phone), <code>2</code> means twice the pixels. Quality is JPEG compression: lower means blurrier and smaller files.",
+        "hint": "Type the numbers directly and press Save to apply them to every later render. Sharpness is the pixel multiplier: <code>1</code> matches the old look (small image, blurry once zoomed on a phone), <code>2</code> means twice the pixels. Quality is the JPEG compression level: lower is blurrier and smaller. PNG is lossless, so quality does not apply.",
         "scaleLabel": "Sharpness (pixel multiplier)",
         "scaleAria": "Sharpness (pixel multiplier)",
         "qualityLabel": "JPEG quality",
         "qualityAria": "JPEG quality",
-        "preview": "Test shot",
+        "preview": "Test render",
         "previewing": "Rendering…",
         "save": "Save and apply",
         "saving": "Saving…",
         "alt": "Render sample",
-        "current": "In effect: sharpness {scale}x · quality floor {floor} · default quality {quality} · format {type}",
-        "caption": "This sample: sharpness {scale}x · quality {quality} · about {kb} KB (higher is crisper and larger)",
-        "saved": "Saved: sharpness {scale}x · quality floor {floor}; later renders use it right away",
-        "invalid": "Sharpness and quality must be numbers"
+        "current": "In effect: {type} · sharpness {scale}x · {quality} · full page {fullPage}",
+        "caption": "This test: {type} · sharpness {scale}x · {quality} · {size} · about {kb} KB",
+        "saved": "Saved: {type} · sharpness {scale}x · quality {quality}; later renders use it right away",
+        "invalid": "Sharpness and quality must be numbers",
+        "currentQuality": "quality {quality}",
+        "currentLossless": "lossless",
+        "sizeUnknown": "size unknown",
+        "typeLabel": "Output format",
+        "typeAria": "Output format",
+        "typeJpeg": "JPEG (smaller files)",
+        "typePng": "PNG (lossless, larger files)",
+        "fullPageLabel": "Full-page capture",
+        "fullPageAria": "Full-page capture",
+        "fullPageHint": "When off, only the visible area is captured and long text may be cut off",
+        "on": "on",
+        "off": "off"
       }
     }
   }
